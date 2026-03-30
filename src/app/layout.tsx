@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import DarkModeSetter from "./DarkModeSetter";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -22,12 +23,22 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // ...existing code...
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col bg-black">
+        {/* Set dark mode on mount (client only) */}
+        <DarkModeSetter />
+        {children}
+      </body>
     </html>
   );
 }
+
+
+
+
