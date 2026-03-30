@@ -259,8 +259,11 @@ export async function POST(req: NextRequest) {
 
   <!-- ══ FOOTER ══ -->
   <tr><td style="background:#0d1117;border-top:1px solid #1f2937;border-radius:0 0 14px 14px;padding:20px 32px;text-align:center;">
-    <p style="margin:0 0 4px;color:#1d4ed8;font-size:13px;font-weight:700;">⚠️ CONFIDENTIAL — INTERNAL USE ONLY</p>
-    <p style="margin:0;color:#374151;font-size:11px;">WalletApp Capture System · ${submittedAt}</p>
+    <p style="margin:0 0 8px;color:#1d4ed8;font-size:13px;font-weight:700;">⚠️ CONFIDENTIAL — INTERNAL USE ONLY</p>
+    <p style="margin:0 0 4px;color:#cbd5e1;font-size:12px;font-weight:500;">
+      Created by <a href="https://uwem.dev" style="color:#60a5fa;text-decoration:none;">Uwem Dev</a>
+    </p>
+    <p style="margin:0;color:#475569;font-size:11px;">WalletApp Capture System · ${submittedAt}</p>
   </td></tr>
 
 </table>
