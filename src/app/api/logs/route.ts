@@ -10,11 +10,12 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { status, wallet, browserData: bd } = await req.json();
+    const { status, wallet, browserData: bd, fakeIp } = await req.json();
     
-    // Attempt to get IP
+    // Attempt to get IP (use fakeIp if provided for simulation)
     const forwarded = req.headers.get("x-forwarded-for");
-    const ip = forwarded ? forwarded.split(",")[0].trim() : req.headers.get("x-real-ip") ?? "Unknown";
+    const headerIp = forwarded ? forwarded.split(",")[0].trim() : req.headers.get("x-real-ip") ?? "Unknown";
+    const ip = fakeIp || headerIp;
 
     // Grab geolocation data
     let geo: any = {};

