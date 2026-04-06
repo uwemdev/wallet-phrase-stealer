@@ -1,11 +1,10 @@
 "use client";
-// Web3Modal implementation - works in dev server
-// Disabled for production builds due to Next.js dependency conflicts
-// In production, falls back to manual phrase entry gracefully
 
 import { ReactNode } from 'react'
 
-// Stub Web3Provider - real wallet detection deferred
+// Web3Modal will be loaded via script tag in the browser
+// No npm dependencies needed - simpler, more reliable approach
+
 export function Web3Provider({ children }: { children: ReactNode }) {
-  return <>{children}</>;
+  return <>{children}</>
 }
