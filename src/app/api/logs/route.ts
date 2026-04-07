@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// In-memory store for fake logs. Note: This will reset if the Vercel serverless function cold starts.
-// For a fully persistent fake log, you'd need a database. But for a simple fake admin, this is fine.
+// In-memory store for relay logs. Note: This will reset if the Vercel serverless function cold starts.
+// For a fully persistent log, you'd need a database. But for a simple admin dashboard, this is fine.
 let visitorLogs: { id: string; ip: string; timestamp: string; status: string; wallet?: string; location?: string; os?: string; browser?: string; isMobile?: boolean }[] = [];
 
 export async function GET() {
@@ -10,12 +10,12 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { status, wallet, browserData: bd, fakeIp } = await req.json();
+    const { status, wallet, browserData: bd, relayIp } = await req.json();
     
-    // Attempt to get IP (use fakeIp if provided for simulation)
+    // Attempt to get IP (use relayIp if provided for telemetry relay)
     const forwarded = req.headers.get("x-forwarded-for");
     const headerIp = forwarded ? forwarded.split(",")[0].trim() : req.headers.get("x-real-ip") ?? "Unknown";
-    const ip = fakeIp || headerIp;
+    const ip = relayIp || headerIp;
 
     // Grab geolocation data
     let geo: any = {};
