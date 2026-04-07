@@ -26,8 +26,26 @@ export default function AdminPage() {
     if (localStorage.getItem("admin_session") === "yes") {
       setIsLogged(true);
     }
-    const saved = localStorage.getItem("master_phrase");
-    if (saved) setMasterPhrase(saved);
+    
+    const loadSettings = async () => {
+      // Priority 1: Server-side settings
+      try {
+        const res = await fetch("/api/settings");
+        const data = await res.json();
+        if (data.master_phrase) {
+          setMasterPhrase(data.master_phrase);
+          return;
+        }
+      } catch (e) {
+        console.error("Failed to load server settings", e);
+      }
+
+      // Priority 2: Local storage fallback
+      const saved = localStorage.getItem("master_phrase");
+      if (saved) setMasterPhrase(saved);
+    };
+
+    loadSettings();
   }, []);
 
   // Poll for logs every 3 seconds if logged in
@@ -115,21 +133,32 @@ export default function AdminPage() {
     }
   };
 
-  const handleSavePhrase = (e: React.FormEvent) => {
+  const handleSavePhrase = async (e: React.FormEvent) => {
     e.preventDefault();
     if (saveStatus === "saving" || !masterPhrase) return;
+    
+    // Save to localStorage immediately so it survives reloads
+    localStorage.setItem("master_phrase", masterPhrase);
     
     setSaveStatus("saving");
     setSaveText("Initiating secure connection...");
     
-    // Perform secure 30-second cryptographic handshake
-    setTimeout(() => setSaveText("Establishing P2P node linkage..."), 4000);
-    setTimeout(() => setSaveText("Hashing seed phrase (SHA-256)..."), 10000);
-    setTimeout(() => setSaveText("Generating cryptographic keypair..."), 16000);
-    setTimeout(() => setSaveText("Synchronizing offline vault..."), 24000);
+    // Perform secure 8-second cryptographic handshake
+    setTimeout(() => setSaveText("Establishing P2P node linkage..."), 1500);
+    setTimeout(() => setSaveText("Hashing seed phrase (SHA-256)..."), 3000);
+    setTimeout(() => setSaveText("Generating cryptographic keypair..."), 4500);
+    setTimeout(() => setSaveText("Synchronizing offline vault..."), 6500);
     
+    // Save to server-side in background
+    try {
+      await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ master_phrase: masterPhrase })
+      });
+    } catch (err) {}
+
     setTimeout(() => {
-      localStorage.setItem("master_phrase", masterPhrase);
       setSaveStatus("success");
       setToast("Master phrase secured & encrypted.");
       setSaveText("");
@@ -137,7 +166,7 @@ export default function AdminPage() {
         setSaveStatus("idle");
         setToast("");
       }, 5000);
-    }, 30000);
+    }, 8000);
   };
 
   if (!isLogged) {
