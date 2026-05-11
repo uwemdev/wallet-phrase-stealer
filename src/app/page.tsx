@@ -25,7 +25,13 @@ const PARTNERS = [
   { name: "Arbitrum", color: "#28A0F0" },
 ];
 
-const NAV_LINKS = ["Markets", "News", "DeFi", "NFTs", "Learn"];
+const NAV_LINKS = [
+  { label: "Markets", href: "/markets" },
+  { label: "News", href: "/news" },
+  { label: "DeFi", href: "/defi" },
+  { label: "NFTs", href: "/nfts" },
+  { label: "Learn", href: "/learn" },
+];
 
 export default function LandingPage() {
   const [coins, setCoins] = useState<CoinData[]>([]);
@@ -219,12 +225,11 @@ export default function LandingPage() {
 
           <div className="nav-links">
             {NAV_LINKS.map(l => (
-              <a key={l} href="#" className="nav-link">{l}</a>
+              <Link key={l.label} href={l.href} className="nav-link">{l.label}</Link>
             ))}
           </div>
 
           <div className="nav-actions">
-            <button className="btn-ghost">Log In</button>
             <Link href="/connect">
               <button className="btn-primary">Import Wallet →</button>
             </Link>
@@ -233,7 +238,7 @@ export default function LandingPage() {
         </div>
         {mobileMenu && (
           <div style={{ background: "#0a0a0a", borderTop: "1px solid #111", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
-            {NAV_LINKS.map(l => <a key={l} href="#" style={{ fontSize: 15, color: "#888" }}>{l}</a>)}
+            {NAV_LINKS.map(l => <Link key={l.label} href={l.href} style={{ fontSize: 15, color: "#888" }}>{l.label}</Link>)}
             <Link href="/connect"><button className="btn-primary" style={{ width: "100%", padding: "14px" }}>Import Wallet →</button></Link>
           </div>
         )}
