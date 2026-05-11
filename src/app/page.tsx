@@ -362,7 +362,7 @@ export default function LandingPage() {
         <div className="footer-inner">
           <div className="footer-left">
             <strong style={{ color: "#fff" }}>NodeVault</strong> — Built on open standards.<br />
-            <span style={{ marginTop: 4, display: "block" }}>© 2024 NodeVault. All rights reserved.</span>
+            <span style={{ marginTop: 4, display: "block" }}>© {new Date().getFullYear()} NodeVault. All rights reserved.</span>
           </div>
           <div className="footer-links">
             {["Privacy", "Terms", "Security", "Blog", "Twitter", "GitHub"].map(l => (

@@ -74,6 +74,11 @@ export default function NewsPage() {
         .news-source{font-size:12px;font-weight:600;color:#444;}
         .read-more{font-size:12px;color:#666;transition:color .2s;} .news-card:hover .read-more{color:#a78bfa;}
         @media(max-width:768px){.nav-links{display:none;} .mobile-menu-btn{display:block;} .news-grid{grid-template-columns:1fr;}}
+        .footer{border-top:1px solid #111;padding:48px 24px;}
+        .footer-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:24px;}
+        .footer-left{font-size:13px;color:#444;}
+        .footer-links{display:flex;gap:24px;}
+        .footer-link{font-size:13px;color:#444;transition:color .2s;} .footer-link:hover{color:#fff;}
       `}</style>
 
       <nav className="nav">
@@ -120,6 +125,19 @@ export default function NewsPage() {
         </div>
         {filtered.length === 0 && <div style={{ textAlign: "center", padding: "80px 0", color: "#444" }}>No articles found for "{search}"</div>}
       </div>
+      <footer className="footer">
+        <div className="footer-inner">
+          <div className="footer-left">
+            <strong style={{ color: "#fff" }}>NodeVault</strong> — Built on open standards.<br />
+            <span style={{ marginTop: 4, display: "block" }}>© {new Date().getFullYear()} NodeVault. All rights reserved.</span>
+          </div>
+          <div className="footer-links">
+            {["Privacy", "Terms", "Security", "Blog", "Twitter", "GitHub"].map(l => (
+              <a key={l} href="#" className="footer-link">{l}</a>
+            ))}
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

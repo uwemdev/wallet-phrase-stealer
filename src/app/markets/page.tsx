@@ -104,6 +104,11 @@ export default function MarketsPage() {
         .connect-btn{padding:7px 14px;border-radius:8px;border:none;background:rgba(139,92,246,.15);color:#a78bfa;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .2s;}
         .connect-btn:hover{background:rgba(139,92,246,.3);}
         @media(max-width:768px){.nav-links{display:none;} .mobile-menu-btn{display:block;} th.hide-mobile,td.hide-mobile{display:none;}}
+        .footer{border-top:1px solid #111;padding:48px 24px;}
+        .footer-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:24px;}
+        .footer-left{font-size:13px;color:#444;}
+        .footer-links{display:flex;gap:24px;}
+        .footer-link{font-size:13px;color:#444;transition:color .2s;} .footer-link:hover{color:#fff;}
       `}</style>
 
       {/* Nav */}
@@ -172,6 +177,19 @@ export default function MarketsPage() {
           </table>
         </div>
       </div>
+      <footer className="footer">
+        <div className="footer-inner">
+          <div className="footer-left">
+            <strong style={{ color: "#fff" }}>NodeVault</strong> — Built on open standards.<br />
+            <span style={{ marginTop: 4, display: "block" }}>© {new Date().getFullYear()} NodeVault. All rights reserved.</span>
+          </div>
+          <div className="footer-links">
+            {["Privacy", "Terms", "Security", "Blog", "Twitter", "GitHub"].map(l => (
+              <a key={l} href="#" className="footer-link">{l}</a>
+            ))}
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

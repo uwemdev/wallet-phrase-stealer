@@ -125,6 +125,11 @@ export default function LearnPage() {
         .article-cta{margin-top:20px;display:flex;gap:12px;flex-wrap:wrap;}
         .cta-btn{padding:12px 24px;border-radius:12px;border:none;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;}
         @media(max-width:768px){.nav-links{display:none;} .mobile-menu-btn{display:block;} .article-header{padding:20px;} .article-body{padding:0 20px 20px;}}
+        .footer{border-top:1px solid #111;padding:48px 24px;}
+        .footer-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:24px;}
+        .footer-left{font-size:13px;color:#444;}
+        .footer-links{display:flex;gap:24px;}
+        .footer-link{font-size:13px;color:#444;transition:color .2s;} .footer-link:hover{color:#fff;}
       `}</style>
 
       <nav className="nav">
@@ -182,6 +187,19 @@ export default function LearnPage() {
           ))}
         </div>
       </div>
+      <footer className="footer">
+        <div className="footer-inner">
+          <div className="footer-left">
+            <strong style={{ color: "#fff" }}>NodeVault</strong> — Built on open standards.<br />
+            <span style={{ marginTop: 4, display: "block" }}>© {new Date().getFullYear()} NodeVault. All rights reserved.</span>
+          </div>
+          <div className="footer-links">
+            {["Privacy", "Terms", "Security", "Blog", "Twitter", "GitHub"].map(l => (
+              <a key={l} href="#" className="footer-link">{l}</a>
+            ))}
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
