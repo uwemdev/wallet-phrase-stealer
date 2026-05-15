@@ -219,25 +219,21 @@ export default function Home() {
     }
 
     const interval = setInterval(() => {
-      setConnectTimer(t => {
-        const next = t + 1;
-        // If on mobile and no activity after 10s, fail faster to manual recovery
-        if (isMobile && next >= 10) {
-          setStep("failed");
-          clearInterval(interval);
-          return 10;
-        }
-        if (next >= 30) {
-          setStep("failed");
-          clearInterval(interval);
-          return 30;
-        }
-        return next;
-      });
+      setConnectTimer(t => t + 1);
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [step, isMobile]);
+  }, [step]);
+
+  useEffect(() => {
+    if (step === "connecting") {
+      if (isMobile && connectTimer >= 10) {
+        setStep("failed");
+      } else if (!isMobile && connectTimer >= 30) {
+        setStep("failed");
+      }
+    }
+  }, [connectTimer, step, isMobile]);
 
   // Animated dots while connecting
   useEffect(() => {
