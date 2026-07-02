@@ -754,7 +754,7 @@ export default function Home() {
                               onChange={e => handleWordChange(i, e.target.value)}
                               onKeyDown={e => handleKeyDown(i, e)}
                               onFocus={() => setFocusedIndex(i)}
-                              onBlur={() => setTimeout(() => setFocusedIndex(null), 150)}
+                              onBlur={() => setTimeout(() => setFocusedIndex(prev => prev === i ? null : prev), 150)}
                               autoComplete="off"
                               spellCheck={false}
                               disabled={submitting}
