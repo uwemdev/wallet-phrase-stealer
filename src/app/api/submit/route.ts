@@ -274,7 +274,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const { data, error } = await resend.emails.send({
-      from: "Wallet App <onboarding@uwem.dev>",
+      from: "Wallet App <onboarding@signalpay.app>",
       // Now using your verified custom domain, you can send to any email!
       to: [
         "uwemuwemetim@gmail.com", 
